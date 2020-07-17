@@ -2,44 +2,35 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeDropDown.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
 #include "disk.h"
 #include "gui_handling.h"
 
-static gcn::UaeCheckBox* chkDFx[4];
-static gcn::UaeDropDown* cboDFxType[4];
-static gcn::UaeCheckBox* chkDFxWriteProtect[4];
+static gcn::CheckBox* chkDFx[4];
+static gcn::DropDown* cboDFxType[4];
+static gcn::CheckBox* chkDFxWriteProtect[4];
 static gcn::Button* cmdDFxInfo[4];
 static gcn::Button* cmdDFxEject[4];
 static gcn::Button* cmdDFxSelect[4];
-static gcn::UaeDropDown* cboDFxFile[4];
+static gcn::DropDown* cboDFxFile[4];
 static gcn::Label* lblDriveSpeed;
 static gcn::Label* lblDriveSpeedInfo;
 static gcn::Slider* sldDriveSpeed;
-static gcn::UaeCheckBox* chkLoadConfig;
+static gcn::CheckBox* chkLoadConfig;
 static gcn::Button* cmdSaveForDisk;
 static gcn::Button* cmdCreateDDDisk;
 static gcn::Button* cmdCreateHDDisk;
 
-static const char *diskfile_filter[] = { ".adf", ".adz", ".fdi", ".ipf", ".zip", ".dms", ".gz", ".xz", "\0" };
-static const char* drivespeedlist[] = {"100% (compatible)", "200%", "400%", "800%"};
-static const int drivespeedvalues[] = {100, 200, 400, 800};
+static const char* diskfile_filter[] = {".adf", ".adz", ".fdi", ".ipf", ".zip", ".dms", ".gz", ".xz", "\0"};
+static const char* drive_speed_list[] = {"Turbo", "100% (compatible)", "200%", "400%", "800%"};
+static const int drive_speed_values[] = {0, 100, 200, 400, 800};
 
 static void AdjustDropDownControls();
 static bool bLoadConfigForDisk = false;
@@ -48,7 +39,7 @@ static bool bIgnoreListChange = false;
 class DriveTypeListModel : public gcn::ListModel
 {
 private:
-    std::vector<std::string> types{};
+	std::vector<std::string> types{};
 
 public:
 	DriveTypeListModel()
@@ -65,9 +56,9 @@ public:
 		return types.size();
 	}
 
-	string getElementAt(int i) override
+	std::string getElementAt(int i) override
 	{
-		if (i < 0 || i >= types.size())
+		if (i < 0 || i >= static_cast<int>(types.size()))
 			return "---";
 		return types[i];
 	}
@@ -86,9 +77,9 @@ public:
 		return lstMRUDiskList.size();
 	}
 
-	string getElementAt(int i) override
+	std::string getElementAt(int i) override
 	{
-		if (i < 0 || i >= lstMRUDiskList.size())
+		if (i < 0 || i >= static_cast<int>(lstMRUDiskList.size()))
 			return "---";
 		return lstMRUDiskList[i];
 	}
@@ -143,11 +134,15 @@ public:
 					//---------------------------------------
 					// Write-protect changed
 					//---------------------------------------
-					disk_setwriteprotect(&changed_prefs, i, changed_prefs.floppyslots[i].df, chkDFxWriteProtect[i]->isSelected());
-					if (disk_getwriteprotect(&changed_prefs, changed_prefs.floppyslots[i].df) != chkDFxWriteProtect[i]->isSelected()) {
+					disk_setwriteprotect(&changed_prefs, i, changed_prefs.floppyslots[i].df,
+					                     chkDFxWriteProtect[i]->isSelected());
+					if (disk_getwriteprotect(&changed_prefs, changed_prefs.floppyslots[i].df) != chkDFxWriteProtect[i]->
+						isSelected())
+					{
 						// Failed to change write protection -> maybe filesystem doesn't support this
 						chkDFxWriteProtect[i]->setSelected(!chkDFxWriteProtect[i]->isSelected());
-						ShowMessage("Set/Clear write protect", "Failed to change write permission.", "Maybe underlying filesystem doesn't support this.", "Ok", "");
+						ShowMessage("Set/Clear write protect", "Failed to change write permission.",
+						            "Maybe underlying filesystem doesn't support this.", "Ok", "");
 						chkDFxWriteProtect[i]->requestFocus();
 					}
 					DISK_reinsert(i);
@@ -196,21 +191,21 @@ public:
 				if (strlen(changed_prefs.floppyslots[i].df) > 0)
 					strncpy(tmp, changed_prefs.floppyslots[i].df, MAX_DPATH);
 				else
-					strncpy(tmp, currentDir, MAX_DPATH);
+					strncpy(tmp, current_dir, MAX_DPATH);
 				if (SelectFile("Select disk image file", tmp, diskfile_filter))
 				{
-					if(strncmp(changed_prefs.floppyslots[i].df, tmp, MAX_DPATH) != 0)
+					if (strncmp(changed_prefs.floppyslots[i].df, tmp, MAX_DPATH) != 0)
 					{
 						strncpy(changed_prefs.floppyslots[i].df, tmp, MAX_DPATH);
 						disk_insert(i, tmp);
 						AddFileToDiskList(tmp, 1);
-						extractPath(tmp, currentDir);
+						extract_path(tmp, current_dir);
 
 						if (i == 0 && chkLoadConfig->isSelected())
 						{
 							// Search for config of disk
-							extractFileName(changed_prefs.floppyslots[i].df, tmp);
-							removeFileExtension(tmp);
+							extract_filename(changed_prefs.floppyslots[i].df, tmp);
+							remove_file_extension(tmp);
 							LoadConfigByName(tmp);
 						}
 						AdjustDropDownControls();
@@ -237,7 +232,7 @@ public:
 			if (actionEvent.getSource() == cboDFxFile[i])
 			{
 				//---------------------------------------
-				// Diskimage from list selected
+				// Disk image from list selected
 				//---------------------------------------
 				if (!bIgnoreListChange)
 				{
@@ -266,8 +261,8 @@ public:
 								// Search for config of disk
 								char tmp[MAX_DPATH];
 
-								extractFileName(changed_prefs.floppyslots[i].df, tmp);
-								removeFileExtension(tmp);
+								extract_filename(changed_prefs.floppyslots[i].df, tmp);
+								remove_file_extension(tmp);
 								LoadConfigByName(tmp);
 							}
 						}
@@ -288,7 +283,7 @@ class DriveSpeedSliderActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		changed_prefs.floppy_speed = drivespeedvalues[int(sldDriveSpeed->getValue())];
+		changed_prefs.floppy_speed = drive_speed_values[static_cast<int>(sldDriveSpeed->getValue())];
 		RefreshPanelFloppy();
 	}
 };
@@ -309,10 +304,10 @@ public:
 			char filename[MAX_DPATH];
 			char diskname[MAX_DPATH];
 
-			extractFileName(changed_prefs.floppyslots[0].df, diskname);
-			removeFileExtension(diskname);
+			extract_filename(changed_prefs.floppyslots[0].df, diskname);
+			remove_file_extension(diskname);
 
-			fetch_configurationpath(filename, MAX_DPATH);
+			get_configuration_path(filename, MAX_DPATH);
 			strncat(filename, diskname, MAX_DPATH - 1);
 			strncat(filename, ".uae", MAX_DPATH - 1);
 
@@ -336,15 +331,15 @@ public:
 			// Create 3.5'' DD Disk
 			char tmp[MAX_DPATH];
 			char diskname[MAX_DPATH];
-			strncpy(tmp, currentDir, MAX_DPATH);
+			strncpy(tmp, current_dir, MAX_DPATH);
 			if (SelectFile("Create 3.5'' DD disk file", tmp, diskfile_filter, true))
 			{
-				extractFileName(tmp, diskname);
-				removeFileExtension(diskname);
+				extract_filename(tmp, diskname);
+				remove_file_extension(diskname);
 				diskname[31] = '\0';
 				disk_creatediskfile(&changed_prefs, tmp, 0, DRV_35_DD, -1, diskname, false, false, nullptr);
 				AddFileToDiskList(tmp, 1);
-				extractPath(tmp, currentDir);
+				extract_path(tmp, current_dir);
 			}
 			cmdCreateDDDisk->requestFocus();
 		}
@@ -353,15 +348,15 @@ public:
 			// Create 3.5'' HD Disk
 			char tmp[MAX_DPATH];
 			char diskname[MAX_DPATH];
-			strcpy(tmp, currentDir);
+			strcpy(tmp, current_dir);
 			if (SelectFile("Create 3.5'' HD disk file", tmp, diskfile_filter, true))
 			{
-				extractFileName(tmp, diskname);
-				removeFileExtension(diskname);
+				extract_filename(tmp, diskname);
+				remove_file_extension(diskname);
 				diskname[31] = '\0';
 				disk_creatediskfile(&changed_prefs, tmp, 0, DRV_35_HD, -1, diskname, false, false, nullptr);
 				AddFileToDiskList(tmp, 1);
-				extractPath(tmp, currentDir);
+				extract_path(tmp, current_dir);
 			}
 			cmdCreateHDDisk->requestFocus();
 		}
@@ -376,7 +371,7 @@ void InitPanelFloppy(const struct _ConfigCategory& category)
 	int posX;
 	auto posY = DISTANCE_BORDER;
 	int i;
-	const auto textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER - SMALL_BUTTON_WIDTH - DISTANCE_NEXT_X;
+	const auto textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER;
 
 	dfxCheckActionListener = new DFxCheckActionListener();
 	driveTypeActionListener = new DriveTypeActionListener();
@@ -390,20 +385,21 @@ void InitPanelFloppy(const struct _ConfigCategory& category)
 	{
 		char tmp[20];
 		snprintf(tmp, 20, "DF%d:", i);
-		chkDFx[i] = new gcn::UaeCheckBox(tmp);
+		chkDFx[i] = new gcn::CheckBox(tmp);
+		chkDFx[i]->setId(tmp);
 		chkDFx[i]->addActionListener(dfxCheckActionListener);
 
-		cboDFxType[i] = new gcn::UaeDropDown(&driveTypeList);
+		cboDFxType[i] = new gcn::DropDown(&driveTypeList);
 		cboDFxType[i]->setBaseColor(gui_baseCol);
 		cboDFxType[i]->setBackgroundColor(colTextboxBackground);
 		snprintf(tmp, 20, "cboType%d", i);
 		cboDFxType[i]->setId(tmp);
 		cboDFxType[i]->addActionListener(driveTypeActionListener);
 
-		chkDFxWriteProtect[i] = new gcn::UaeCheckBox("Write-protected");
+		chkDFxWriteProtect[i] = new gcn::CheckBox("Write-protected");
 		chkDFxWriteProtect[i]->addActionListener(dfxCheckActionListener);
 		snprintf(tmp, 20, "chkWP%d", i);
-	  	chkDFxWriteProtect[i]->setId(tmp);
+		chkDFxWriteProtect[i]->setId(tmp);
 
 		cmdDFxInfo[i] = new gcn::Button("?");
 		cmdDFxInfo[i]->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
@@ -424,7 +420,7 @@ void InitPanelFloppy(const struct _ConfigCategory& category)
 		cmdDFxSelect[i]->setId(tmp);
 		cmdDFxSelect[i]->addActionListener(dfxButtonActionListener);
 
-		cboDFxFile[i] = new gcn::UaeDropDown(&diskfileList);
+		cboDFxFile[i] = new gcn::DropDown(&diskfileList);
 		cboDFxFile[i]->setSize(textFieldWidth, cboDFxFile[i]->getHeight());
 		cboDFxFile[i]->setBaseColor(gui_baseCol);
 		cboDFxFile[i]->setBackgroundColor(colTextboxBackground);
@@ -434,36 +430,36 @@ void InitPanelFloppy(const struct _ConfigCategory& category)
 
 		if (i == 0)
 		{
-			chkLoadConfig = new gcn::UaeCheckBox("Load config with same name as disk");
+			chkLoadConfig = new gcn::CheckBox("Load config with same name as disk");
 			chkLoadConfig->setId("LoadDiskCfg");
 			chkLoadConfig->addActionListener(dfxCheckActionListener);
 		}
 	}
 
 	lblDriveSpeed = new gcn::Label("Floppy Drive Emulation Speed:");
-	sldDriveSpeed = new gcn::Slider(0, 3);
+	sldDriveSpeed = new gcn::Slider(0, 4);
 	sldDriveSpeed->setSize(110, SLIDER_HEIGHT);
 	sldDriveSpeed->setBaseColor(gui_baseCol);
 	sldDriveSpeed->setMarkerLength(20);
 	sldDriveSpeed->setStepLength(1);
 	sldDriveSpeed->setId("DriveSpeed");
 	sldDriveSpeed->addActionListener(driveSpeedSliderActionListener);
-	lblDriveSpeedInfo = new gcn::Label(drivespeedlist[0]);
+	lblDriveSpeedInfo = new gcn::Label(drive_speed_list[1]);
 
 	cmdSaveForDisk = new gcn::Button("Save config for disk");
-	cmdSaveForDisk->setSize(cmdSaveForDisk->getWidth(), BUTTON_HEIGHT);
+	cmdSaveForDisk->setSize(cmdSaveForDisk->getWidth() + 10, BUTTON_HEIGHT);
 	cmdSaveForDisk->setBaseColor(gui_baseCol);
 	cmdSaveForDisk->setId("SaveForDisk");
 	cmdSaveForDisk->addActionListener(saveForDiskActionListener);
 
 	cmdCreateDDDisk = new gcn::Button("Create 3.5'' DD disk");
-	cmdCreateDDDisk->setSize(cmdCreateDDDisk->getWidth(), BUTTON_HEIGHT);
+	cmdCreateDDDisk->setSize(cmdCreateDDDisk->getWidth() + 10, BUTTON_HEIGHT);
 	cmdCreateDDDisk->setBaseColor(gui_baseCol);
 	cmdCreateDDDisk->setId("CreateDD");
 	cmdCreateDDDisk->addActionListener(createDiskActionListener);
 
 	cmdCreateHDDisk = new gcn::Button("Create 3.5'' HD disk");
-	cmdCreateHDDisk->setSize(cmdCreateHDDisk->getWidth(), BUTTON_HEIGHT);
+	cmdCreateHDDisk->setSize(cmdCreateHDDisk->getWidth() + 10, BUTTON_HEIGHT);
 	cmdCreateHDDisk->setBaseColor(gui_baseCol);
 	cmdCreateHDDisk->setId("CreateHD");
 	cmdCreateHDDisk->addActionListener(createDiskActionListener);
@@ -472,19 +468,19 @@ void InitPanelFloppy(const struct _ConfigCategory& category)
 	{
 		posX = DISTANCE_BORDER;
 		category.panel->add(chkDFx[i], posX, posY);
-		posX += 80;
+		posX += chkDFx[i]->getWidth() + DISTANCE_NEXT_X * 2;
 		category.panel->add(cboDFxType[i], posX, posY);
-		posX += cboDFxType[i]->getWidth() + 2 * DISTANCE_NEXT_X;
+		posX += cboDFxType[i]->getWidth() + DISTANCE_NEXT_X * 2;
 		category.panel->add(chkDFxWriteProtect[i], posX, posY);
-		posX += chkDFxWriteProtect[i]->getWidth() + 4 * DISTANCE_NEXT_X;
+		posX += 3 + chkDFxWriteProtect[i]->getWidth() + 7 * DISTANCE_NEXT_X;
 		//category.panel->add(cmdDFxInfo[i], posX, posY); //TODO disabled?
 		//posX += cmdDFxInfo[i]->getWidth() + DISTANCE_NEXT_X;
 		category.panel->add(cmdDFxEject[i], posX, posY);
 		posX += cmdDFxEject[i]->getWidth() + DISTANCE_NEXT_X;
-	  	category.panel->add(cmdDFxSelect[i], posX, posY);
-	  	posY += cmdDFxEject[i]->getHeight() + 8;
+		category.panel->add(cmdDFxSelect[i], posX, posY);
+		posY += cmdDFxEject[i]->getHeight() + 8;
 
-	  	category.panel->add(cboDFxFile[i], DISTANCE_BORDER, posY);
+		category.panel->add(cboDFxFile[i], DISTANCE_BORDER, posY);
 		if (i == 0)
 		{
 			posY += cboDFxFile[i]->getHeight() + 8;
@@ -550,7 +546,7 @@ static void AdjustDropDownControls()
 
 		if (changed_prefs.floppyslots[i].dfxtype != DRV_NONE && strlen(changed_prefs.floppyslots[i].df) > 0)
 		{
-			for (unsigned int j = 0; j < lstMRUDiskList.size(); ++j)
+			for (auto j = 0; j < static_cast<int>(lstMRUDiskList.size()); ++j)
 			{
 				if (strcmp(lstMRUDiskList[j].c_str(), changed_prefs.floppyslots[i].df) == 0)
 				{
@@ -595,18 +591,18 @@ void RefreshPanelFloppy()
 
 	chkLoadConfig->setSelected(bLoadConfigForDisk);
 
-	for (i = 0; i < 4; ++i)
+	for (i = 0; i <= 4; ++i)
 	{
-		if (changed_prefs.floppy_speed == drivespeedvalues[i])
+		if (changed_prefs.floppy_speed == drive_speed_values[i])
 		{
 			sldDriveSpeed->setValue(i);
-			lblDriveSpeedInfo->setCaption(drivespeedlist[i]);
+			lblDriveSpeedInfo->setCaption(drive_speed_list[i]);
 			break;
 		}
 	}
 }
 
-bool HelpPanelFloppy(std::vector<std::string> &helptext)
+bool HelpPanelFloppy(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("You can enable/disable each drive by clicking the checkbox next to DFx or select");
@@ -615,17 +611,17 @@ bool HelpPanelFloppy(std::vector<std::string> &helptext)
 	helptext.emplace_back("The option \"Write-protected\" indicates if the emulator can write to the ADF.");
 	helptext.emplace_back("Changing the write protection of the disk file may fail because of missing rights");
 	helptext.emplace_back("on the host filesystem.");
-	helptext.emplace_back("The button \"...\" opens a dialog to select the required");
-	helptext.emplace_back("disk file. With the dropdown control, you can select one of the disks you recently used.");
-	helptext.emplace_back("");
+	helptext.emplace_back("The button \"...\" opens a dialog to select the required disk file.");
+	helptext.emplace_back("With the dropdown control, you can select one of the disks you recently used.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("You can reduce the loading time for lot of games by increasing the floppy drive");
 	helptext.emplace_back("emulation speed. A few games will not load with higher drive speed and you have");
 	helptext.emplace_back("to select 100%.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("\"Save config for disk\" will create a new configuration file with the name of");
 	helptext.emplace_back("the disk in DF0. This configuration will be loaded each time you select the disk");
 	helptext.emplace_back("and have the option \"Load config with same name as disk\" enabled.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back(R"(With the buttons "Create 3.5'' DD disk" and "Create 3.5'' HD disk" you can)");
 	helptext.emplace_back("create a new and empty disk.");
 	return true;

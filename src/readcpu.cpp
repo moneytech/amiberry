@@ -5,7 +5,6 @@
 *
 * Copyright 1995,1996 Bernd Schmidt
 */
-#include <stdlib.h>
 
 #include "sysdeps.h"
 #include "readcpu.h"
@@ -102,6 +101,7 @@ struct mnemolookup lookuptab[] = {
 	{ i_CAS2, _T("CAS2") },
 	{ i_MULL, _T("MULL") },
 	{ i_DIVL, _T("DIVL") },
+
 	{ i_BFTST, _T("BFTST") },
 	{ i_BFEXTU, _T("BFEXTU") },
 	{ i_BFCHG, _T("BFCHG") },
@@ -110,6 +110,7 @@ struct mnemolookup lookuptab[] = {
 	{ i_BFFFO, _T("BFFFO") },
 	{ i_BFSET, _T("BFSET") },
 	{ i_BFINS, _T("BFINS") },
+
 	{ i_PACK, _T("PACK") },
 	{ i_UNPK, _T("UNPK") },
 	{ i_TAS, _T("TAS") },
@@ -118,11 +119,11 @@ struct mnemolookup lookuptab[] = {
 	{ i_RTM, _T("RTM") },
 	{ i_TRAPcc, _T("TRAPcc") },
 	{ i_MOVES, _T("MOVES") },
+
 	{ i_FPP, _T("FPP") },
 	{ i_FDBcc, _T("FDBcc") },
 	{ i_FScc, _T("FScc") },
 	{ i_FTRAPcc, _T("FTRAPcc") },
-	{ i_FBcc, _T("FBcc") },
 	{ i_FBcc, _T("FBcc") },
 	{ i_FSAVE, _T("FSAVE") },
 	{ i_FRESTORE, _T("FRESTORE") },
@@ -278,12 +279,14 @@ out2:
 		int usesrc = 0, usedst = 0;
 		int srctype = 0;
 		int srcpos = -1, dstpos = -1;
+		int usecc = 0;
 
 		amodes srcmode = am_unknown, destmode = am_unknown;
 		int srcreg = -1, destreg = -1;
 
-		for (i = 0; i < lastbit; i++)
+		for (i = 0; i < lastbit; i++) {
 			bitcnt[i] = bitval[i] = 0;
+    }
 
 		vmsk = 1 << id.n_variable;
 
@@ -299,6 +302,8 @@ out2:
 				bitcnt[currbit]++;
 				bitval[currbit] <<= 1;
 				bitval[currbit] |= bit_set;
+				if (currbit == bitC || currbit == bitc)
+					usecc = 1;
 			}
 		}
 
@@ -445,7 +450,7 @@ out2:
     		}
     		break;
       case 'p': srcmode = immi; srcreg = bitval[bitp];
-    		if (CPU_EMU_SIZE < 5) {
+				if (CPU_EMU_SIZE < 5) {
 					/* 0..3 */
 					srcgather = 1;
 					srctype = 7;
@@ -739,6 +744,8 @@ endofline:
 			table68k[opc].mnemo = lookuptab[find].mnemo;
 		}
 		table68k[opc].cc = bitval[bitc];
+		table68k[opc].ccuse = usecc != 0;
+
 		mnemo = table68k[opc].mnemo;
 		if (mnemo == i_BTST
 			|| mnemo == i_BSET
@@ -832,7 +839,7 @@ void read_table68k (void)
 
 static int imismatch;
 
-static void handle_merges (long int opcode)
+static void handle_merges (uae_s32 opcode)
 {
 	uae_u16 smsk;
 	uae_u16 dmsk;
@@ -911,7 +918,7 @@ static void handle_merges (long int opcode)
 
 void do_merges (void)
 {
-	long int opcode;
+	uae_s32 opcode;
 	int nr = 0;
 	imismatch = 0;
 	for (opcode = 0; opcode < 65536; opcode++) {

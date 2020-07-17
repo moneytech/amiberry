@@ -21,17 +21,46 @@
 typedef int8_t uae_s8;
 typedef uint8_t uae_u8;
 
-typedef int16_t uae_s16;
-typedef uint16_t uae_u16;
+#if SIZEOF_SHORT == 2
+typedef unsigned short uae_u16;
+typedef short uae_s16;
+#elif SIZEOF_INT == 2
+typedef unsigned int uae_u16;
+typedef int uae_s16;
+#else
+#error No 2 byte type, you lose.
+#endif
 
-typedef int uae_s32;
+#if SIZEOF_INT == 4
 typedef unsigned int uae_u32;
+typedef int uae_s32;
+#elif SIZEOF_LONG == 4
+typedef unsigned long uae_u32;
+typedef long uae_s32;
+#else
+#error No 4 byte type, you lose.
+#endif
 
 #ifndef uae_s64
-typedef long long int uae_s64;
+typedef long long uae_s64;
 #endif
 #ifndef uae_u64
-typedef unsigned long long int uae_u64;
+typedef unsigned long long uae_u64;
+#endif
+
+#if SIZEOF_LONG_LONG == 8
+#define VAL64(a) (a ## LL)
+#define UVAL64(a) (a ## uLL)
+#elif SIZEOF___INT64 == 8
+#define uae_s64 __int64
+#define uae_u64 unsigned __int64
+#define VAL64(a) (a)
+#define UVAL64(a) (a)
+#elif SIZEOF_LONG == 8
+#define uae_s64 long;
+#define uae_u64 unsigned long;
+#define VAL64(a) (a ## l)
+#define UVAL64(a) (a ## ul)
 #endif
 
 /* Parts of the UAE/WinUAE code uses the bool type (from C++).

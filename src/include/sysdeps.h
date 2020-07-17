@@ -43,9 +43,9 @@ using namespace std;
 #if defined(__x86_64__) || defined(_M_AMD64)
 #define CPU_x86_64 1
 #define CPU_64_BIT 1
-#elif defined(__i386__) || defined(_M_IX86) && !defined(__arm__)
+#elif defined(__i386__) || defined(_M_IX86) && !defined(__arm__) && !defined(__aarch64__)
 #define CPU_i386 1
-#elif defined(__arm__) || defined(_M_ARM)
+#elif defined(__arm__) || defined(_M_ARM) || defined(__aarch64__)
 #define CPU_arm 1
 #elif defined(__powerpc__) || defined(_M_PPC)
 #define CPU_powerpc 1
@@ -54,7 +54,7 @@ using namespace std;
 #endif
 
 #ifndef __STDC__
-#ifndef _MSC_VER_
+#ifndef _MSC_VER
 #error "Your compiler is not ANSI. Get a real one."
 #endif
 #endif
@@ -306,6 +306,8 @@ extern void mallocemu_free (void *ptr);
 #endif
 
 extern void write_log (const TCHAR *,...);
+extern TCHAR console_getch(void);
+extern void f_out(FILE*, const TCHAR*, ...);
 extern void gui_message (const TCHAR *,...);
 
 #ifndef O_BINARY
@@ -325,7 +327,7 @@ extern void gui_message (const TCHAR *,...);
 #endif
 #define NOINLINE __attribute__ ((noinline))
 #define NORETURN __attribute__ ((noreturn))
-#elif _MSC_VER_
+#elif _MSC_VER
 #define STATIC_INLINE static __forceinline
 #define NOINLINE __declspec(noinline)
 #define NORETURN __declspec(noreturn)
@@ -380,6 +382,24 @@ STATIC_INLINE uae_u32 do_byteswap_16(uae_u32 v) {
 }
 #define bswap_16(x) do_byteswap_16(x)
 #define bswap_32(x) do_byteswap_32(x)
+
+#elif defined(CPU_AARCH64)
+
+STATIC_INLINE uae_u32 do_byteswap_32(uae_u32 v) {
+  __asm__ (
+	"rev %w0, %w0"
+    : "=r" (v) : "0" (v) ); return v;
+}
+
+STATIC_INLINE uae_u32 do_byteswap_16(uae_u32 v) {
+  __asm__ (
+    "rev16 %w0, %w0\n\t"
+    "uxth %w0, %w0"
+    : "=r" (v) : "0" (v) ); return v;
+}
+#define bswap_16(x) do_byteswap_16(x)
+#define bswap_32(x) do_byteswap_32(x)
+
 #else
 
 /* Try to use system bswap_16/bswap_32 functions. */
@@ -390,7 +410,7 @@ STATIC_INLINE uae_u32 do_byteswap_16(uae_u32 v) {
 # endif
 #else
 /* Else, if using SDL, try SDL's endian functions. */
-#if defined (USE_SDL1) || defined (USE_SDL2)
+#if defined (USE_SDL)
 #include <SDL_endian.h>
 #define bswap_16(x) SDL_Swap16(x)
 #define bswap_32(x) SDL_Swap32(x)
@@ -418,8 +438,6 @@ STATIC_INLINE uae_u32 do_byteswap_16(uae_u32 v) {
 #define xfree(T) free(T)
 
 #endif
-
-#define DBLEQU(f, i) (abs ((f) - (i)) < 0.000001)
 
 #ifdef HAVE_VAR_ATTRIBUTE_UNUSED
 #define NOWARN_UNUSED(x) __attribute__((unused)) x

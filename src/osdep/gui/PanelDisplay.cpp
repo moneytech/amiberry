@@ -1,55 +1,82 @@
-#include <stdio.h>
+#include <cstdio>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
-#include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeRadioButton.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
 #include "custom.h"
 #include "gui_handling.h"
 
-const int amigawidth_values[] = { 320, 352, 384, 640, 704, 768 };
-const int amigaheight_values[] = { 200, 216, 240, 256, 262, 270 };
+const int amigawidth_values[] = { 320, 362, 384, 640, 704, 720 };
+const int amigaheight_values[] = { 200, 216, 240, 256, 262, 270, 284 };
 
-#ifdef USE_SDL2
+class StringListModel : public gcn::ListModel
+{
+	std::vector<std::string> values;
+public:
+	StringListModel(const char* entries[], const int count)
+	{
+		for (auto i = 0; i < count; ++i)
+			values.emplace_back(entries[i]);
+	}
+
+	int getNumberOfElements() override
+	{
+		return values.size();
+	}
+
+	int AddElement(const char* Elem)
+	{
+		values.emplace_back(Elem);
+		return 0;
+	}
+
+	std::string getElementAt(const int i) override
+	{
+		if (i < 0 || i >= static_cast<int>(values.size()))
+			return "---";
+		return values[i];
+	}
+};
+
+const char* fullscreen_modes[] = { "Windowed", "Fullscreen", "Full-window" };
+StringListModel fullscreen_modes_list(fullscreen_modes, 3);
+
 static gcn::Window* grpScalingMethod;
-static gcn::UaeRadioButton* optAuto;
-static gcn::UaeRadioButton* optNearest;
-static gcn::UaeRadioButton* optLinear;
-#endif
+static gcn::RadioButton* optAuto;
+static gcn::RadioButton* optNearest;
+static gcn::RadioButton* optLinear;
 
 static gcn::Window* grpLineMode;
-static gcn::UaeRadioButton* optSingle;
-static gcn::UaeRadioButton* optDouble;
-static gcn::UaeRadioButton* optScanlines;
+static gcn::RadioButton* optSingle;
+static gcn::RadioButton* optDouble;
+static gcn::RadioButton* optScanlines;
 
-static gcn::Window *grpAmigaScreen;
+static gcn::Window* grpAmigaScreen;
 static gcn::Label* lblAmigaWidth;
-static gcn::Label* lblAmigaWidthInfo;
+static gcn::TextField* txtAmigaWidth;
 static gcn::Slider* sldAmigaWidth;
+
 static gcn::Label* lblAmigaHeight;
-static gcn::Label* lblAmigaHeightInfo;
+static gcn::TextField* txtAmigaHeight;
 static gcn::Slider* sldAmigaHeight;
 
-static gcn::Label* lblVertPos;
-static gcn::Label* lblVertPosInfo;
-static gcn::Slider* sldVertPos;
+static gcn::CheckBox* chkAutoHeight;
 
-static gcn::UaeCheckBox* chkFrameskip;
-static gcn::UaeCheckBox* chkAspect;
-static gcn::UaeCheckBox* chkFullscreen;
+static gcn::CheckBox* chkFrameskip;
+static gcn::Slider* sldRefresh;
+static gcn::CheckBox* chkAspect;
+
+static gcn::Label* lblScreenmode;
+static gcn::DropDown* cboScreenmode;
+
+static gcn::Window* grpCentering;
+static gcn::CheckBox* chkHorizontal;
+static gcn::CheckBox* chkVertical;
+static gcn::CheckBox* chkFlickerFixer;
 
 class AmigaScreenActionListener : public gcn::ActionListener
 {
@@ -58,53 +85,64 @@ public:
 	{
 		if (actionEvent.getSource() == sldAmigaWidth)
 		{
-			if (changed_prefs.gfx_size.width != amigawidth_values[int(sldAmigaWidth->getValue())])
-			{
-				changed_prefs.gfx_size.width = amigawidth_values[int(sldAmigaWidth->getValue())];
-				RefreshPanelDisplay();
-			}
+			if (changed_prefs.gfx_monitor.gfx_size.width != amigawidth_values[static_cast<int>(sldAmigaWidth->getValue())])
+				changed_prefs.gfx_monitor.gfx_size.width = amigawidth_values[static_cast<int>(sldAmigaWidth->getValue())];
 		}
 		else if (actionEvent.getSource() == sldAmigaHeight)
 		{
-			if (changed_prefs.gfx_size.height != amigaheight_values[int(sldAmigaHeight->getValue())])
-			{
-				changed_prefs.gfx_size.height = amigaheight_values[int(sldAmigaHeight->getValue())];
-				RefreshPanelDisplay();
-			}
+			if (changed_prefs.gfx_monitor.gfx_size.height != amigaheight_values[static_cast<int>(sldAmigaHeight->getValue())])
+				changed_prefs.gfx_monitor.gfx_size.height = amigaheight_values[static_cast<int>(sldAmigaHeight->getValue())];
 		}
-		else if (actionEvent.getSource() == sldVertPos)
-		{
-			if (changed_prefs.vertical_offset != int(sldVertPos->getValue()) + OFFSET_Y_ADJUST)
-			{
-				changed_prefs.vertical_offset = int(sldVertPos->getValue()) + OFFSET_Y_ADJUST;
-				RefreshPanelDisplay();
-			}
-		}
-		else if (actionEvent.getSource() == chkFrameskip)
-			changed_prefs.gfx_framerate = chkFrameskip->isSelected() ? 1 : 0;
+		else if (actionEvent.getSource() == chkAutoHeight)
+			changed_prefs.gfx_auto_height = chkAutoHeight->isSelected();
 
+		else if (actionEvent.getSource() == chkFrameskip)
+		{
+			changed_prefs.gfx_framerate = chkFrameskip->isSelected() ? 2 : 1;
+			sldRefresh->setEnabled(chkFrameskip->isSelected());
+			sldRefresh->setValue(changed_prefs.gfx_framerate);
+		}
+
+		else if (actionEvent.getSource() == sldRefresh)
+			changed_prefs.gfx_framerate = static_cast<int>(sldRefresh->getValue());
+		
 		else if (actionEvent.getSource() == chkAspect)
 			changed_prefs.gfx_correct_aspect = chkAspect->isSelected();
 
-		else if (actionEvent.getSource() == chkFullscreen)
+		else if (actionEvent.getSource() == cboScreenmode)
 		{
-			if (changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_FULLSCREEN)
+			if (cboScreenmode->getSelected() == 0)
 			{
 				changed_prefs.gfx_apmode[0].gfx_fullscreen = GFX_WINDOW;
 				changed_prefs.gfx_apmode[1].gfx_fullscreen = GFX_WINDOW;
 			}
-			else
+			else if (cboScreenmode->getSelected() == 1)
 			{
 				changed_prefs.gfx_apmode[0].gfx_fullscreen = GFX_FULLSCREEN;
 				changed_prefs.gfx_apmode[1].gfx_fullscreen = GFX_FULLSCREEN;
 			}
-		}	
+			else if (cboScreenmode->getSelected() == 2)
+			{
+				changed_prefs.gfx_apmode[0].gfx_fullscreen = GFX_FULLWINDOW;
+				changed_prefs.gfx_apmode[1].gfx_fullscreen = GFX_FULLWINDOW;
+			}
+		}
+
+		else if (actionEvent.getSource() == chkHorizontal)
+			changed_prefs.gfx_xcenter = chkHorizontal->isSelected() ? 2 : 0;
+
+		else if (actionEvent.getSource() == chkVertical)
+			changed_prefs.gfx_ycenter = chkVertical->isSelected() ? 2 : 0;
+
+		else if (actionEvent.getSource() == chkFlickerFixer)
+			changed_prefs.gfx_scandoubler = chkFlickerFixer->isSelected();
+
+		RefreshPanelDisplay();
 	}
 };
 
 AmigaScreenActionListener* amigaScreenActionListener;
 
-#ifdef USE_SDL2
 class ScalingMethodActionListener : public gcn::ActionListener
 {
 public:
@@ -120,7 +158,6 @@ public:
 };
 
 static ScalingMethodActionListener* scalingMethodActionListener;
-#endif
 
 class LineModeActionListener : public gcn::ActionListener
 {
@@ -150,135 +187,171 @@ static LineModeActionListener* lineModeActionListener;
 void InitPanelDisplay(const struct _ConfigCategory& category)
 {
 	amigaScreenActionListener = new AmigaScreenActionListener();
+	scalingMethodActionListener = new ScalingMethodActionListener();
+	lineModeActionListener = new LineModeActionListener();
+	
 	auto posY = DISTANCE_BORDER;
 
 	lblAmigaWidth = new gcn::Label("Width:");
-	lblAmigaWidth->setAlignment(gcn::Graphics::RIGHT);
-	sldAmigaWidth = new gcn::Slider(0, 5);
-	sldAmigaWidth->setSize(160, SLIDER_HEIGHT);
+	lblAmigaWidth->setAlignment(gcn::Graphics::LEFT);
+	sldAmigaWidth = new gcn::Slider(0, AMIGAWIDTH_COUNT - 1);
+	sldAmigaWidth->setSize(135, SLIDER_HEIGHT);
 	sldAmigaWidth->setBaseColor(gui_baseCol);
 	sldAmigaWidth->setMarkerLength(20);
 	sldAmigaWidth->setStepLength(1);
 	sldAmigaWidth->setId("sldWidth");
 	sldAmigaWidth->addActionListener(amigaScreenActionListener);
-	lblAmigaWidthInfo = new gcn::Label("320");
+	txtAmigaWidth = new gcn::TextField();
+	txtAmigaWidth->setSize(35, TEXTFIELD_HEIGHT);
+	txtAmigaWidth->setBackgroundColor(colTextboxBackground);
 
 	lblAmigaHeight = new gcn::Label("Height:");
-	lblAmigaHeight->setAlignment(gcn::Graphics::RIGHT);
-	sldAmigaHeight = new gcn::Slider(0, 5);
-	sldAmigaHeight->setSize(160, SLIDER_HEIGHT);
+	lblAmigaHeight->setAlignment(gcn::Graphics::LEFT);
+	sldAmigaHeight = new gcn::Slider(0, AMIGAHEIGHT_COUNT - 1);
+	sldAmigaHeight->setSize(135, SLIDER_HEIGHT);
 	sldAmigaHeight->setBaseColor(gui_baseCol);
 	sldAmigaHeight->setMarkerLength(20);
 	sldAmigaHeight->setStepLength(1);
 	sldAmigaHeight->setId("sldHeight");
 	sldAmigaHeight->addActionListener(amigaScreenActionListener);
-	lblAmigaHeightInfo = new gcn::Label("200");
+	txtAmigaHeight = new gcn::TextField();
+	txtAmigaHeight->setSize(35, TEXTFIELD_HEIGHT);
+	txtAmigaHeight->setBackgroundColor(colTextboxBackground);
 
-	lblVertPos = new gcn::Label("V. offset:");
-	lblVertPos->setAlignment(gcn::Graphics::RIGHT);
-	sldVertPos = new gcn::Slider(-16, 16);
-	sldVertPos->setSize(160, SLIDER_HEIGHT);
-	sldVertPos->setBaseColor(gui_baseCol);
-	sldVertPos->setMarkerLength(20);
-	sldVertPos->setStepLength(1);
-	sldVertPos->setId("sldVertPos");
-	sldVertPos->addActionListener(amigaScreenActionListener);
-	lblVertPosInfo = new gcn::Label("000");
+	chkAutoHeight = new gcn::CheckBox("Auto Height");
+	chkAutoHeight->setId("chkAutoHeight");
+	chkAutoHeight->addActionListener(amigaScreenActionListener);
+	
+	chkHorizontal = new gcn::CheckBox("Horizontal");
+	chkHorizontal->setId("chkHorizontal");
+	chkHorizontal->addActionListener(amigaScreenActionListener);
+	chkVertical = new gcn::CheckBox("Vertical");
+	chkVertical->setId("chkVertical");
+	chkVertical->addActionListener(amigaScreenActionListener);
 
-	chkAspect = new gcn::UaeCheckBox("Correct Aspect Ratio");
+	chkFlickerFixer = new gcn::CheckBox("Remove interlace artifacts");
+	chkFlickerFixer->setId("chkFlickerFixer");
+	chkFlickerFixer->addActionListener(amigaScreenActionListener);
+	
+	chkAspect = new gcn::CheckBox("Correct Aspect Ratio");
 	chkAspect->setId("CorrectAR");
 	chkAspect->addActionListener(amigaScreenActionListener);
 
-	chkFrameskip = new gcn::UaeCheckBox("Frameskip");
+	chkFrameskip = new gcn::CheckBox("Frameskip");
+	chkFrameskip->setId("chkFrameskip");
 	chkFrameskip->addActionListener(amigaScreenActionListener);
 
-	chkFullscreen = new gcn::UaeCheckBox("Fullscreen");
-	chkFullscreen->addActionListener(amigaScreenActionListener);
-
+	sldRefresh = new gcn::Slider(1, 10);
+	sldRefresh->setSize(100, SLIDER_HEIGHT);
+	sldRefresh->setBaseColor(gui_baseCol);
+	sldRefresh->setMarkerLength(20);
+	sldRefresh->setStepLength(1);
+	sldRefresh->setId("sldRefresh");
+	sldRefresh->addActionListener(amigaScreenActionListener);
+	
+	lblScreenmode = new gcn::Label("Screen mode:");
+	lblScreenmode->setAlignment(gcn::Graphics::RIGHT);
+	cboScreenmode = new gcn::DropDown(&fullscreen_modes_list);
+	cboScreenmode->setSize(150, cboScreenmode->getHeight());
+	cboScreenmode->setBaseColor(gui_baseCol);
+	cboScreenmode->setBackgroundColor(colTextboxBackground);
+	cboScreenmode->setId("cboScreenmode");
+	cboScreenmode->addActionListener(amigaScreenActionListener);
+	
 	grpAmigaScreen = new gcn::Window("Amiga Screen");
 	grpAmigaScreen->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
 
 	grpAmigaScreen->add(lblAmigaWidth, DISTANCE_BORDER, posY);
-	grpAmigaScreen->add(sldAmigaWidth, lblAmigaWidth->getX() + lblAmigaWidth->getWidth() + DISTANCE_NEXT_X, posY);
-	grpAmigaScreen->add(lblAmigaWidthInfo, sldAmigaWidth->getX() + sldAmigaWidth->getWidth() + DISTANCE_NEXT_X, posY);
+	grpAmigaScreen->add(sldAmigaWidth, lblAmigaWidth->getX() + lblAmigaHeight->getWidth() + DISTANCE_NEXT_X, posY);
+	grpAmigaScreen->add(txtAmigaWidth, sldAmigaWidth->getX() + sldAmigaWidth->getWidth() + DISTANCE_NEXT_X, posY);
 	posY += sldAmigaWidth->getHeight() + DISTANCE_NEXT_Y;
 
 	grpAmigaScreen->add(lblAmigaHeight, DISTANCE_BORDER, posY);
 	grpAmigaScreen->add(sldAmigaHeight, lblAmigaHeight->getX() + lblAmigaHeight->getWidth() + DISTANCE_NEXT_X, posY);
-	grpAmigaScreen->add(lblAmigaHeightInfo, sldAmigaHeight->getX() + sldAmigaHeight->getWidth() + DISTANCE_NEXT_X, posY);
+	grpAmigaScreen->add(txtAmigaHeight, sldAmigaHeight->getX() + sldAmigaHeight->getWidth() + DISTANCE_NEXT_X,
+		posY);
+	
 	posY += sldAmigaHeight->getHeight() + DISTANCE_NEXT_Y;
-
-	grpAmigaScreen->add(lblVertPos, DISTANCE_BORDER, posY);
-	grpAmigaScreen->add(sldVertPos, lblVertPos->getX() + lblVertPos->getWidth() + DISTANCE_NEXT_X, posY);
-	grpAmigaScreen->add(lblVertPosInfo, sldVertPos->getX() + sldVertPos->getWidth() + 12, posY);
-	posY += sldVertPos->getHeight() + DISTANCE_NEXT_Y;
+	grpAmigaScreen->add(chkAutoHeight, DISTANCE_BORDER, posY);
+	posY += chkAutoHeight->getHeight() + DISTANCE_NEXT_Y;
+	grpAmigaScreen->add(lblScreenmode, DISTANCE_BORDER, posY);
+	grpAmigaScreen->add(cboScreenmode, lblScreenmode->getX() + lblScreenmode->getWidth() + 8, posY);
+	posY += cboScreenmode->getHeight() + DISTANCE_NEXT_Y;
 
 	grpAmigaScreen->setMovable(false);
-	grpAmigaScreen->setSize(lblVertPos->getX() + lblVertPos->getWidth() + sldVertPos->getWidth() + lblVertPosInfo->getWidth() + (DISTANCE_BORDER*2), posY + DISTANCE_BORDER);
+	grpAmigaScreen->setSize(lblAmigaWidth->getX() + lblAmigaWidth->getWidth() + sldAmigaWidth->getWidth() + lblAmigaWidth->getWidth() + txtAmigaHeight->getWidth() + DISTANCE_BORDER, posY + DISTANCE_BORDER * 4);
+	grpAmigaScreen->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpAmigaScreen->setBaseColor(gui_baseCol);
-
 	category.panel->add(grpAmigaScreen);
+
+	grpCentering = new gcn::Window("Centering");
+	grpCentering->setPosition(DISTANCE_BORDER + grpAmigaScreen->getWidth() + DISTANCE_NEXT_X, DISTANCE_BORDER);
+	grpCentering->add(chkHorizontal, DISTANCE_BORDER, DISTANCE_BORDER);
+	grpCentering->add(chkVertical, DISTANCE_BORDER, chkHorizontal->getY() + chkHorizontal->getHeight() + DISTANCE_NEXT_Y);
+	grpCentering->setMovable(false);
+	grpCentering->setSize(chkHorizontal->getX() + chkHorizontal->getWidth() + DISTANCE_BORDER * 2, TITLEBAR_HEIGHT + chkVertical->getY() + chkVertical->getHeight() + DISTANCE_NEXT_Y);
+	grpCentering->setTitleBarHeight(TITLEBAR_HEIGHT);
+	grpCentering->setBaseColor(gui_baseCol);
+	category.panel->add(grpCentering);	
 	posY = DISTANCE_BORDER + grpAmigaScreen->getHeight() + DISTANCE_NEXT_Y;
 
-#ifdef USE_SDL2
-	scalingMethodActionListener = new ScalingMethodActionListener();
-
-	optAuto = new gcn::UaeRadioButton("Auto", "radioscalingmethodgroup");
+	optAuto = new gcn::RadioButton("Auto", "radioscalingmethodgroup");
+	optAuto->setId("Auto");
 	optAuto->addActionListener(scalingMethodActionListener);
 
-	optNearest = new gcn::UaeRadioButton("Nearest Neighbor (pixelated)", "radioscalingmethodgroup");
+	optNearest = new gcn::RadioButton("Nearest Neighbor (pixelated)", "radioscalingmethodgroup");
+	optNearest->setId("Nearest Neighbor (pixelated)");
 	optNearest->addActionListener(scalingMethodActionListener);
 
-	optLinear = new gcn::UaeRadioButton("Linear (smooth)", "radioscalingmethodgroup");
+	optLinear = new gcn::RadioButton("Linear (smooth)", "radioscalingmethodgroup");
+	optLinear->setId("Linear (smooth)");
 	optLinear->addActionListener(scalingMethodActionListener);
 
 	grpScalingMethod = new gcn::Window("Scaling method");
 	grpScalingMethod->setPosition(DISTANCE_BORDER, posY);
-	grpScalingMethod->add(optAuto, 5, 10);
-	grpScalingMethod->add(optNearest, 5, 40);
-	grpScalingMethod->add(optLinear, 5, 70);
+	grpScalingMethod->add(optAuto, 10, 10);
+	grpScalingMethod->add(optNearest, optAuto->getX(), optAuto->getY() + optAuto->getHeight() + DISTANCE_NEXT_Y);
+	grpScalingMethod->add(optLinear, optNearest->getX(), optNearest->getY() + optNearest->getHeight() + DISTANCE_NEXT_Y);
 	grpScalingMethod->setMovable(false);
-	grpScalingMethod->setSize(optNearest->getWidth() + DISTANCE_BORDER, optLinear->getY() + optLinear->getHeight() + 30);
+	grpScalingMethod->setSize(grpAmigaScreen->getWidth(),
+	                          optLinear->getY() + optLinear->getHeight() + DISTANCE_BORDER * 3);
+	grpScalingMethod->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpScalingMethod->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpScalingMethod);
-	posY += DISTANCE_BORDER + grpScalingMethod->getHeight() + DISTANCE_NEXT_Y;
-#endif
+	posY += grpScalingMethod->getHeight() + DISTANCE_NEXT_Y;
 
-	lineModeActionListener = new LineModeActionListener();
-	optSingle = new gcn::UaeRadioButton("Single", "linemodegroup");
+	optSingle = new gcn::RadioButton("Single", "linemodegroup");
+	optSingle->setId("Single");
 	optSingle->addActionListener(lineModeActionListener);
 
-	optDouble = new gcn::UaeRadioButton("Double", "linemodegroup");
+	optDouble = new gcn::RadioButton("Double", "linemodegroup");
+	optDouble->setId("Double");
 	optDouble->addActionListener(lineModeActionListener);
 
-	optScanlines = new gcn::UaeRadioButton("Scanlines", "linemodegroup");
+	optScanlines = new gcn::RadioButton("Scanlines", "linemodegroup");
+	optScanlines->setId("Scanlines");
 	optScanlines->addActionListener(lineModeActionListener);
 
 	grpLineMode = new gcn::Window("Line mode");
-#ifdef USE_SDL2
-	grpLineMode->setPosition(
-		grpScalingMethod->getWidth() + DISTANCE_BORDER + DISTANCE_NEXT_X, 
-		posY - DISTANCE_BORDER - grpScalingMethod->getHeight() - DISTANCE_NEXT_Y);
-#else
-	grpLineMode->setPosition(DISTANCE_BORDER, posY);
-#endif
+	grpLineMode->setPosition(grpCentering->getX(), grpCentering->getY() + grpCentering->getHeight() + DISTANCE_NEXT_Y);
 	grpLineMode->add(optSingle, 5, 10);
 	grpLineMode->add(optDouble, 5, 40);
 	grpLineMode->add(optScanlines, 5, 70);
 	grpLineMode->setMovable(false);
-	grpLineMode->setSize(optScanlines->getWidth() + DISTANCE_BORDER, optScanlines->getY() + optScanlines->getHeight() + 30);
+	grpLineMode->setSize(grpCentering->getWidth(), TITLEBAR_HEIGHT + optScanlines->getY() + optScanlines->getHeight() + DISTANCE_NEXT_Y);
+	grpLineMode->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpLineMode->setBaseColor(gui_baseCol);
+	
 	category.panel->add(grpLineMode);
-#ifndef USE_SDL2
-	posY += DISTANCE_BORDER + grpLineMode->getHeight() + DISTANCE_NEXT_Y;
-#endif
-
 	category.panel->add(chkAspect, DISTANCE_BORDER, posY);
-	category.panel->add(chkFullscreen, chkAspect->getX() + chkAspect->getWidth() + DISTANCE_NEXT_X * 2, posY);
 	posY += chkAspect->getHeight() + DISTANCE_NEXT_Y;
-
+	
+	category.panel->add(chkFlickerFixer, DISTANCE_BORDER, posY);
+	posY += chkFlickerFixer->getHeight() + DISTANCE_NEXT_Y;
+	
 	category.panel->add(chkFrameskip, DISTANCE_BORDER, posY);
+	category.panel->add(sldRefresh, chkFrameskip->getX() + chkFrameskip->getWidth() + DISTANCE_NEXT_X, posY);
 
 	RefreshPanelDisplay();
 }
@@ -287,20 +360,25 @@ void InitPanelDisplay(const struct _ConfigCategory& category)
 void ExitPanelDisplay()
 {
 	delete chkFrameskip;
+	delete sldRefresh;
 	delete amigaScreenActionListener;
 	delete lblAmigaWidth;
 	delete sldAmigaWidth;
-	delete lblAmigaWidthInfo;
+	delete txtAmigaWidth;
 	delete lblAmigaHeight;
 	delete sldAmigaHeight;
-	delete lblAmigaHeightInfo;
-	delete lblVertPos;
-	delete sldVertPos;
-	delete lblVertPosInfo;
+	delete txtAmigaHeight;
+	delete chkAutoHeight;
 	delete grpAmigaScreen;
 
+	delete chkHorizontal;
+	delete chkVertical;
+	delete chkFlickerFixer;
+	delete grpCentering;
+	
 	delete chkAspect;
-	delete chkFullscreen;
+	delete lblScreenmode;
+	delete cboScreenmode;
 
 	delete optSingle;
 	delete optDouble;
@@ -308,90 +386,129 @@ void ExitPanelDisplay()
 	delete grpLineMode;
 	delete lineModeActionListener;
 
-#ifdef USE_SDL2
 	delete optAuto;
 	delete optNearest;
 	delete optLinear;
 	delete grpScalingMethod;
 	delete scalingMethodActionListener;
-#endif
 }
 
 
 void RefreshPanelDisplay()
 {
-	chkFrameskip->setSelected(changed_prefs.gfx_framerate);
-
+	chkFrameskip->setSelected(changed_prefs.gfx_framerate > 1);
+	sldRefresh->setEnabled(chkFrameskip->isSelected());
+	sldRefresh->setValue(changed_prefs.gfx_framerate);
+	
 	int i;
 	char tmp[32];
 
-	for (i = 0; i<6; ++i)
+	for (i = 0; i < AMIGAWIDTH_COUNT; ++i)
 	{
-		if (changed_prefs.gfx_size.width == amigawidth_values[i])
+		if (changed_prefs.gfx_monitor.gfx_size.width == amigawidth_values[i])
 		{
 			sldAmigaWidth->setValue(i);
-			snprintf(tmp, 32, "%d", changed_prefs.gfx_size.width);
-			lblAmigaWidthInfo->setCaption(tmp);
+			snprintf(tmp, 32, "%d", changed_prefs.gfx_monitor.gfx_size.width);
+			txtAmigaWidth->setText(tmp);
+			break;
+		}
+		// if we reached the end and didn't find anything, set the maximum value
+		if (i == AMIGAWIDTH_COUNT - 1)
+		{
+			snprintf(tmp, 32, "%d", changed_prefs.gfx_monitor.gfx_size.width);
+			txtAmigaWidth->setText(tmp);
 			break;
 		}
 	}
 
-	for (i = 0; i<6; ++i)
+	for (i = 0; i < AMIGAHEIGHT_COUNT; ++i)
 	{
-		if (changed_prefs.gfx_size.height == amigaheight_values[i])
+		if (changed_prefs.gfx_monitor.gfx_size.height == amigaheight_values[i])
 		{
 			sldAmigaHeight->setValue(i);
-			snprintf(tmp, 32, "%d", changed_prefs.gfx_size.height);
-			lblAmigaHeightInfo->setCaption(tmp);
+			snprintf(tmp, 32, "%d", changed_prefs.gfx_monitor.gfx_size.height);
+			txtAmigaHeight->setText(tmp);
+			break;
+		}
+		// if we reached the end and didn't find anything, set the maximum value
+		if (i == AMIGAHEIGHT_COUNT - 1)
+		{
+			snprintf(tmp, 32, "%d", changed_prefs.gfx_monitor.gfx_size.height);
+			txtAmigaHeight->setText(tmp);
 			break;
 		}
 	}
+	chkAutoHeight->setSelected(changed_prefs.gfx_auto_height);
 
+	lblAmigaHeight->setEnabled(!chkAutoHeight->isSelected());
+	sldAmigaHeight->setEnabled(!chkAutoHeight->isSelected());
+	txtAmigaHeight->setEnabled(!chkAutoHeight->isSelected());
+	
+	chkHorizontal->setSelected(changed_prefs.gfx_xcenter == 2);
+	chkVertical->setSelected(changed_prefs.gfx_ycenter == 2);
+
+	chkFlickerFixer->setSelected(changed_prefs.gfx_scandoubler);
 	chkAspect->setSelected(changed_prefs.gfx_correct_aspect);
-	chkFullscreen->setSelected(changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_FULLSCREEN);
 
-#ifdef USE_SDL2
+	if (changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_WINDOW)
+		cboScreenmode->setSelected(0);
+	else if (changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_FULLSCREEN)
+		cboScreenmode->setSelected(1);
+	else if (changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_FULLWINDOW)
+		cboScreenmode->setSelected(2);
+
+#ifdef USE_DISPMANX
+	lblScreenmode->setEnabled(false);
+	cboScreenmode->setEnabled(false);
+#endif
+	
 	if (changed_prefs.scaling_method == -1)
 		optAuto->setSelected(true);
 	else if (changed_prefs.scaling_method == 0)
 		optNearest->setSelected(true);
 	else if (changed_prefs.scaling_method == 1)
 		optLinear->setSelected(true);
-#endif
 
+#ifdef USE_DISPMANX
+	grpScalingMethod->setEnabled(false);
+	optAuto->setEnabled(false);
+	optNearest->setEnabled(false);
+	optLinear->setEnabled(false);
+#endif
+	
 	if (changed_prefs.gfx_vresolution == VRES_NONDOUBLE && changed_prefs.gfx_pscanlines == 0)
 		optSingle->setSelected(true);
 	else if (changed_prefs.gfx_vresolution == VRES_DOUBLE && changed_prefs.gfx_pscanlines == 0)
 		optDouble->setSelected(true);
 	else if (changed_prefs.gfx_vresolution == VRES_DOUBLE && changed_prefs.gfx_pscanlines == 1)
 		optScanlines->setSelected(true);
-
-	sldVertPos->setValue(changed_prefs.vertical_offset - OFFSET_Y_ADJUST);
-	snprintf(tmp, 32, "%d", changed_prefs.vertical_offset - OFFSET_Y_ADJUST);
-	lblVertPosInfo->setCaption(tmp);
 }
 
-bool HelpPanelDisplay(std::vector<std::string> &helptext)
+bool HelpPanelDisplay(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("Select the required width and height of the Amiga screen. If you select \"NTSC\"");
 	helptext.emplace_back("in Chipset, a value greater than 240 for \"Height\" makes no sense. When the game,");
 	helptext.emplace_back("Demo or Workbench uses HiRes mode and you selected a value for \"Width\" lower than 640,");
 	helptext.emplace_back("you will only see half of the pixels.");
-	helptext.emplace_back("");
-#ifdef USE_SDL2
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can use the Horizontal/Vertical centering options to center the image automatically");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("The Aspect Ratio option allows you to choose if you want the correct Aspect Ratio");
+	helptext.emplace_back("to be kept always (default), or have the image stretched to fill the screen instead.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("The Full Screen option allows you to switch from Windowed to Full screen and back.");
+	helptext.emplace_back("This only works when running under X11 with SDL2, as KMSDRM is always Fullscreen.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("Select the scaling method for the Amiga screen. The default option \"Auto\", ");
 	helptext.emplace_back("will try to find the best looking scaling method depending on your monitor's resolution. ");
 	helptext.emplace_back("\"Nearest Neighbor\" will give you a more pixelated and crisp image, but it may come with ");
 	helptext.emplace_back("some distortion if your resolution is not an exact multiple. ");
 	helptext.emplace_back("\"Linear\" will give you a smoother scaling but some people might find it a bit blurry.");
-	helptext.emplace_back("");
-#endif
-	helptext.emplace_back("With \"Vert. offset\" you can adjust the position of the first drawn line of the Amiga ");
-	helptext.emplace_back("screen.");
-	helptext.emplace_back("");
-	helptext.emplace_back("Activate line doubling to remove flicker in interlace modes, or Scanlines for the CRT effect.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
+	helptext.emplace_back(
+		"Activate line doubling to remove flicker in interlace modes, or Scanlines for the CRT effect.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("When you activate \"Frameskip\", only every second frame is drawn.");
 	helptext.emplace_back("This will improve performance and some more games are playable.");
 	return true;

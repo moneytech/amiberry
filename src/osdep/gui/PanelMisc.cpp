@@ -1,41 +1,33 @@
-#include <string.h>
-#include <unistd.h>
+#include <cstring>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
-#include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeDropDown.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
 #include "gui_handling.h"
+#include "statusline.h"
 
-static gcn::UaeCheckBox* chkRetroArchQuit;
-static gcn::UaeCheckBox* chkRetroArchMenu;
-static gcn::UaeCheckBox* chkRetroArchReset;
-//static gcn::UaeCheckBox* chkRetroArchSaveState;
+static gcn::CheckBox* chkRetroArchQuit;
+static gcn::CheckBox* chkRetroArchMenu;
+static gcn::CheckBox* chkRetroArchReset;
+//static gcn::CheckBox* chkRetroArchSaveState;
 
-static gcn::UaeCheckBox* chkStatusLine;
-static gcn::UaeCheckBox* chkHideIdleLed;
-static gcn::UaeCheckBox* chkShowGUI;
-
-static gcn::UaeCheckBox* chkBSDSocket;
-static gcn::UaeCheckBox* chkMasterWP;
+static gcn::CheckBox* chkStatusLine;
+static gcn::CheckBox* chkStatusLineRtg;
+static gcn::CheckBox* chkShowGUI;
+static gcn::CheckBox* chkMouseUntrap;
+static gcn::CheckBox* chkBSDSocket;
+static gcn::CheckBox* chkMasterWP;
+static gcn::CheckBox* chkClipboardSharing;
+static gcn::CheckBox* chkAllowHostRun;
 
 static gcn::Label* lblNumLock;
-static gcn::UaeDropDown* cboKBDLed_num;
+static gcn::DropDown* cboKBDLed_num;
 static gcn::Label* lblScrLock;
-static gcn::UaeDropDown* cboKBDLed_scr;
+static gcn::DropDown* cboKBDLed_scr;
 
 static gcn::Label* lblOpenGUI;
 static gcn::TextField* txtOpenGUI;
@@ -55,7 +47,7 @@ static gcn::Button* cmdKeyFullScreen;
 
 class StringListModel : public gcn::ListModel
 {
-	vector<string> values;
+	std::vector<std::string> values;
 public:
 	StringListModel(const char* entries[], const int count)
 	{
@@ -68,7 +60,7 @@ public:
 		return values.size();
 	}
 
-	string getElementAt(int i) override
+	std::string getElementAt(int i) override
 	{
 		if (i < 0 || i >= values.size())
 			return "---";
@@ -76,8 +68,8 @@ public:
 	}
 };
 
-static const char* listValues[] = {"none", "POWER", "DF0", "DF1", "DF2", "DF3", "DF*", "HD", "CD"};
-static StringListModel KBDLedList(listValues, 9);
+static const char* listValues[] = {"none", "POWER", "DF0", "DF1", "DF2", "DF3", "HD", "CD"};
+static StringListModel KBDLedList(listValues, 8);
 
 class MiscActionListener : public gcn::ActionListener
 {
@@ -85,53 +77,72 @@ public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
 		if (actionEvent.getSource() == chkStatusLine)
-			changed_prefs.leds_on_screen = chkStatusLine->isSelected();
-
-		else if (actionEvent.getSource() == chkHideIdleLed)
-			changed_prefs.hide_idle_led = chkHideIdleLed->isSelected();
+		{
+			if (chkStatusLine->isSelected())
+				changed_prefs.leds_on_screen = changed_prefs.leds_on_screen | STATUSLINE_CHIPSET;
+			else
+				changed_prefs.leds_on_screen = changed_prefs.leds_on_screen & ~STATUSLINE_CHIPSET;
+		}
+		else if (actionEvent.getSource() == chkStatusLineRtg)
+		{
+			if (chkStatusLineRtg->isSelected())
+				changed_prefs.leds_on_screen = changed_prefs.leds_on_screen | STATUSLINE_RTG;
+			else
+				changed_prefs.leds_on_screen = changed_prefs.leds_on_screen & ~STATUSLINE_RTG;
+		}
 
 		else if (actionEvent.getSource() == chkShowGUI)
 			changed_prefs.start_gui = chkShowGUI->isSelected();
+
+		else if (actionEvent.getSource() == chkMouseUntrap)
+			changed_prefs.input_mouse_untrap = chkMouseUntrap->isSelected();
 
 		else if (actionEvent.getSource() == chkRetroArchQuit)
 		{
 			changed_prefs.use_retroarch_quit = chkRetroArchQuit->isSelected();
 			RefreshPanelCustom();
 		}
-			
+
 		else if (actionEvent.getSource() == chkRetroArchMenu)
 		{
 			changed_prefs.use_retroarch_menu = chkRetroArchMenu->isSelected();
 			RefreshPanelCustom();
 		}
-			
+
 		else if (actionEvent.getSource() == chkRetroArchReset)
 		{
 			changed_prefs.use_retroarch_reset = chkRetroArchReset->isSelected();
 			RefreshPanelCustom();
 		}
-			
-		//      else if (actionEvent.getSource() == chkRetroArchSavestate)
-		//        changed_prefs.amiberry_use_retroarch_savestatebuttons = chkRetroArchSavestate->isSelected();
+
+		//else if (actionEvent.getSource() == chkRetroArchSavestate)
+		//   changed_prefs.amiberry_use_retroarch_savestatebuttons = chkRetroArchSavestate->isSelected();
 
 		else if (actionEvent.getSource() == chkBSDSocket)
 			changed_prefs.socket_emu = chkBSDSocket->isSelected();
 
-		else if (actionEvent.getSource() == chkMasterWP) {
+		else if (actionEvent.getSource() == chkMasterWP)
+		{
 			changed_prefs.floppy_read_only = chkMasterWP->isSelected();
 			RefreshPanelQuickstart();
 			RefreshPanelFloppy();
 		}
 
+		else if (actionEvent.getSource() == chkClipboardSharing)
+			changed_prefs.clipboard_sharing = chkClipboardSharing->isSelected();
+
+		else if (actionEvent.getSource() == chkAllowHostRun)
+			changed_prefs.allow_host_run = chkAllowHostRun->isSelected();
+		
 		else if (actionEvent.getSource() == cboKBDLed_num)
-			changed_prefs.kbd_led_num = cboKBDLed_num->getSelected();
+			changed_prefs.kbd_led_num = cboKBDLed_num->getSelected() - 1;
 
 		else if (actionEvent.getSource() == cboKBDLed_scr)
-			changed_prefs.kbd_led_scr = cboKBDLed_scr->getSelected();
+			changed_prefs.kbd_led_scr = cboKBDLed_scr->getSelected() - 1;
 
 		else if (actionEvent.getSource() == cmdOpenGUI)
 		{
-			const auto key = ShowMessageForInput("Press a key", "Press a key to map to Open the GUI", "Cancel");
+			const auto* const key = ShowMessageForInput("Press a key", "Press a key to map to Open the GUI", "Cancel");
 			if (key != nullptr)
 			{
 				txtOpenGUI->setText(key);
@@ -141,7 +152,7 @@ public:
 
 		else if (actionEvent.getSource() == cmdKeyForQuit)
 		{
-			const auto key = ShowMessageForInput("Press a key", "Press a key to map to Quit the emulator", "Cancel");
+			const auto* const key = ShowMessageForInput("Press a key", "Press a key to map to Quit the emulator", "Cancel");
 			if (key != nullptr)
 			{
 				txtKeyForQuit->setText(key);
@@ -151,7 +162,7 @@ public:
 
 		else if (actionEvent.getSource() == cmdKeyActionReplay)
 		{
-			const auto key = ShowMessageForInput("Press a key", "Press a key to map to Action Replay", "Cancel");
+			const auto* const key = ShowMessageForInput("Press a key", "Press a key to map to Action Replay", "Cancel");
 			if (key != nullptr)
 			{
 				txtKeyActionReplay->setText(key);
@@ -161,7 +172,7 @@ public:
 
 		else if (actionEvent.getSource() == cmdKeyFullScreen)
 		{
-			const auto key = ShowMessageForInput("Press a key", "Press a key to map to toggle FullScreen", "Cancel");
+			const auto* const key = ShowMessageForInput("Press a key", "Press a key to map to toggle FullScreen", "Cancel");
 			if (key != nullptr)
 			{
 				txtKeyFullScreen->setText(key);
@@ -178,45 +189,57 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 {
 	miscActionListener = new MiscActionListener();
 
-	chkStatusLine = new gcn::UaeCheckBox("Status Line");
-	chkStatusLine->setId("StatusLine");
+	chkStatusLine = new gcn::CheckBox("Status Line native");
+	chkStatusLine->setId("chkStatusLineNative");
 	chkStatusLine->addActionListener(miscActionListener);
 
-	chkHideIdleLed = new gcn::UaeCheckBox("Hide idle led");
-	chkHideIdleLed->setId("HideIdle");
-	chkHideIdleLed->addActionListener(miscActionListener);
+	chkStatusLineRtg = new gcn::CheckBox("Status Line RTG");
+	chkStatusLineRtg->setId("chkStatusLineRtg");
+	chkStatusLineRtg->addActionListener(miscActionListener);
 
-	chkShowGUI = new gcn::UaeCheckBox("Show GUI on startup");
+	chkShowGUI = new gcn::CheckBox("Show GUI on startup");
 	chkShowGUI->setId("ShowGUI");
 	chkShowGUI->addActionListener(miscActionListener);
 
-	chkRetroArchQuit = new gcn::UaeCheckBox("Use RetroArch Quit Button");
+	chkMouseUntrap = new gcn::CheckBox("Untrap = middle button");
+	chkMouseUntrap->setId("chkMouseUntrap");
+	chkMouseUntrap->addActionListener(miscActionListener);
+	
+	chkRetroArchQuit = new gcn::CheckBox("Use RetroArch Quit Button");
 	chkRetroArchQuit->setId("RetroArchQuit");
 	chkRetroArchQuit->addActionListener(miscActionListener);
 
-	chkRetroArchMenu = new gcn::UaeCheckBox("Use RetroArch Menu Button");
+	chkRetroArchMenu = new gcn::CheckBox("Use RetroArch Menu Button");
 	chkRetroArchMenu->setId("RetroArchMenu");
 	chkRetroArchMenu->addActionListener(miscActionListener);
 
-	chkRetroArchReset = new gcn::UaeCheckBox("Use RetroArch Reset Button");
+	chkRetroArchReset = new gcn::CheckBox("Use RetroArch Reset Button");
 	chkRetroArchReset->setId("RetroArchReset");
 	chkRetroArchReset->addActionListener(miscActionListener);
 
-	//chkRetroArchSavestate = new gcn::UaeCheckBox("Use RetroArch State Controls");
+	//chkRetroArchSavestate = new gcn::CheckBox("Use RetroArch State Controls");
 	//chkRetroArchSavestate->setId("RetroArchState");
 	//chkRetroArchSavestate->addActionListener(miscActionListener);
 
-	chkBSDSocket = new gcn::UaeCheckBox("bsdsocket.library");
+	chkBSDSocket = new gcn::CheckBox("bsdsocket.library");
 	chkBSDSocket->setId("BSDSocket");
 	chkBSDSocket->addActionListener(miscActionListener);
 
-	chkMasterWP = new gcn::UaeCheckBox("Master floppy write protection");
+	chkMasterWP = new gcn::CheckBox("Master floppy write protection");
 	chkMasterWP->setId("MasterWP");
 	chkMasterWP->addActionListener(miscActionListener);
 
+	chkClipboardSharing = new gcn::CheckBox("Clipboard sharing");
+	chkClipboardSharing->setId("chkClipboardSharing");
+	chkClipboardSharing->addActionListener(miscActionListener);
+
+	chkAllowHostRun = new gcn::CheckBox("Allow host-run");
+	chkAllowHostRun->setId("chkAllowHostRun");
+	chkAllowHostRun->addActionListener(miscActionListener);
+	
 	lblNumLock = new gcn::Label("NumLock:");
 	lblNumLock->setAlignment(gcn::Graphics::RIGHT);
-	cboKBDLed_num = new gcn::UaeDropDown(&KBDLedList);
+	cboKBDLed_num = new gcn::DropDown(&KBDLedList);
 	cboKBDLed_num->setBaseColor(gui_baseCol);
 	cboKBDLed_num->setBackgroundColor(colTextboxBackground);
 	cboKBDLed_num->setId("cboNumlock");
@@ -224,7 +247,7 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 
 	lblScrLock = new gcn::Label("ScrollLock:");
 	lblScrLock->setAlignment(gcn::Graphics::RIGHT);
-	cboKBDLed_scr = new gcn::UaeDropDown(&KBDLedList);
+	cboKBDLed_scr = new gcn::DropDown(&KBDLedList);
 	cboKBDLed_scr->setBaseColor(gui_baseCol);
 	cboKBDLed_scr->setBackgroundColor(colTextboxBackground);
 	cboKBDLed_scr->setId("cboScrolllock");
@@ -234,7 +257,7 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	lblOpenGUI->setAlignment(gcn::Graphics::RIGHT);
 	txtOpenGUI = new gcn::TextField();
 	txtOpenGUI->setEnabled(false);
-	txtOpenGUI->setSize(85, TEXTFIELD_HEIGHT);
+	txtOpenGUI->setSize(105, TEXTFIELD_HEIGHT);
 	txtOpenGUI->setBackgroundColor(colTextboxBackground);
 	cmdOpenGUI = new gcn::Button("...");
 	cmdOpenGUI->setId("OpenGUI");
@@ -246,7 +269,7 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	lblKeyForQuit->setAlignment(gcn::Graphics::RIGHT);
 	txtKeyForQuit = new gcn::TextField();
 	txtKeyForQuit->setEnabled(false);
-	txtKeyForQuit->setSize(85, TEXTFIELD_HEIGHT);
+	txtKeyForQuit->setSize(105, TEXTFIELD_HEIGHT);
 	txtKeyForQuit->setBackgroundColor(colTextboxBackground);
 	cmdKeyForQuit = new gcn::Button("...");
 	cmdKeyForQuit->setId("KeyForQuit");
@@ -258,7 +281,7 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	lblKeyActionReplay->setAlignment(gcn::Graphics::RIGHT);
 	txtKeyActionReplay = new gcn::TextField();
 	txtKeyActionReplay->setEnabled(false);
-	txtKeyActionReplay->setSize(85, TEXTFIELD_HEIGHT);
+	txtKeyActionReplay->setSize(105, TEXTFIELD_HEIGHT);
 	txtKeyActionReplay->setBackgroundColor(colTextboxBackground);
 	cmdKeyActionReplay = new gcn::Button("...");
 	cmdKeyActionReplay->setId("KeyActionReplay");
@@ -270,7 +293,7 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	lblKeyFullScreen->setAlignment(gcn::Graphics::RIGHT);
 	txtKeyFullScreen = new gcn::TextField();
 	txtKeyFullScreen->setEnabled(false);
-	txtKeyFullScreen->setSize(85, TEXTFIELD_HEIGHT);
+	txtKeyFullScreen->setSize(105, TEXTFIELD_HEIGHT);
 	txtKeyFullScreen->setBackgroundColor(colTextboxBackground);
 	cmdKeyFullScreen = new gcn::Button("...");
 	cmdKeyFullScreen->setId("KeyFullScreen");
@@ -281,10 +304,9 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	auto posY = DISTANCE_BORDER;
 	category.panel->add(chkStatusLine, DISTANCE_BORDER, posY);
 	posY += chkStatusLine->getHeight() + DISTANCE_NEXT_Y;
-	category.panel->add(chkHideIdleLed, DISTANCE_BORDER, posY);
-	posY += chkHideIdleLed->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(chkStatusLineRtg, DISTANCE_BORDER, posY);
+	posY += chkStatusLineRtg->getHeight() + DISTANCE_NEXT_Y;
 	category.panel->add(chkShowGUI, DISTANCE_BORDER, posY);
-	posY += chkShowGUI->getHeight() + DISTANCE_NEXT_Y;
 
 	posY = DISTANCE_BORDER;
 	auto posX = 300;
@@ -296,10 +318,16 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 	posY += chkRetroArchReset->getHeight() + DISTANCE_NEXT_Y;
 	//category.panel->add(chkRetroArchSavestate, posX + DISTANCE_BORDER, posY);
 
+	category.panel->add(chkMouseUntrap, DISTANCE_BORDER, posY);
+	posY += chkMouseUntrap->getHeight() + DISTANCE_NEXT_Y;
 	category.panel->add(chkBSDSocket, DISTANCE_BORDER, posY);
-	posY += chkBSDSocket->getHeight() + DISTANCE_NEXT_Y * 2;
+	posY += chkBSDSocket->getHeight() + DISTANCE_NEXT_Y;
 	category.panel->add(chkMasterWP, DISTANCE_BORDER, posY);
-	posY += chkMasterWP->getHeight() + DISTANCE_NEXT_Y * 2;
+	posY += chkMasterWP->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(chkClipboardSharing, DISTANCE_BORDER, posY);
+	posY += chkClipboardSharing->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(chkAllowHostRun, DISTANCE_BORDER, posY);
+	posY += chkAllowHostRun->getHeight() + DISTANCE_NEXT_Y * 2;
 
 	const auto column2_x = DISTANCE_BORDER + 290;
 
@@ -335,8 +363,9 @@ void InitPanelMisc(const struct _ConfigCategory& category)
 void ExitPanelMisc()
 {
 	delete chkStatusLine;
-	delete chkHideIdleLed;
+	delete chkStatusLineRtg;
 	delete chkShowGUI;
+	delete chkMouseUntrap;
 
 	delete chkRetroArchQuit;
 	delete chkRetroArchMenu;
@@ -345,6 +374,8 @@ void ExitPanelMisc()
 
 	delete chkBSDSocket;
 	delete chkMasterWP;
+	delete chkClipboardSharing;
+	delete chkAllowHostRun;
 
 	delete lblScrLock;
 	delete lblNumLock;
@@ -372,28 +403,38 @@ void ExitPanelMisc()
 
 void RefreshPanelMisc()
 {
-	chkStatusLine->setSelected(changed_prefs.leds_on_screen);
-	chkHideIdleLed->setSelected(changed_prefs.hide_idle_led);
+	chkStatusLine->setSelected(changed_prefs.leds_on_screen & STATUSLINE_CHIPSET);
+	chkStatusLineRtg->setSelected(changed_prefs.leds_on_screen & STATUSLINE_RTG);
 	chkShowGUI->setSelected(changed_prefs.start_gui);
+	chkMouseUntrap->setSelected(changed_prefs.input_mouse_untrap);
 
 	chkRetroArchQuit->setSelected(changed_prefs.use_retroarch_quit);
 	chkRetroArchMenu->setSelected(changed_prefs.use_retroarch_menu);
 	chkRetroArchReset->setSelected(changed_prefs.use_retroarch_reset);
 	//chkRetroArchSavestate->setSelected(changed_prefs.use_retroarch_statebuttons);  
 
+	chkBSDSocket->setEnabled(!emulating);
 	chkBSDSocket->setSelected(changed_prefs.socket_emu);
 	chkMasterWP->setSelected(changed_prefs.floppy_read_only);
+	chkClipboardSharing->setSelected(changed_prefs.clipboard_sharing);
+	chkAllowHostRun->setSelected(changed_prefs.allow_host_run);
 
-	cboKBDLed_num->setSelected(changed_prefs.kbd_led_num);
-	cboKBDLed_scr->setSelected(changed_prefs.kbd_led_scr);
+	cboKBDLed_num->setSelected(changed_prefs.kbd_led_num + 1);
+	cboKBDLed_scr->setSelected(changed_prefs.kbd_led_scr + 1);
 
 	txtOpenGUI->setText(strncmp(changed_prefs.open_gui, "", 1) != 0 ? changed_prefs.open_gui : "Click to map");
-	txtKeyForQuit->setText(strncmp(changed_prefs.quit_amiberry, "", 1) != 0 ? changed_prefs.quit_amiberry : "Click to map");
-	txtKeyActionReplay->setText(strncmp(changed_prefs.action_replay, "", 1) != 0 ? changed_prefs.action_replay : "Click to map");
-	txtKeyFullScreen->setText(strncmp(changed_prefs.fullscreen_toggle, "", 1) != 0 ? changed_prefs.fullscreen_toggle : "Click to map");
+	txtKeyForQuit->setText(strncmp(changed_prefs.quit_amiberry, "", 1) != 0
+		                       ? changed_prefs.quit_amiberry
+		                       : "Click to map");
+	txtKeyActionReplay->setText(strncmp(changed_prefs.action_replay, "", 1) != 0
+		                            ? changed_prefs.action_replay
+		                            : "Click to map");
+	txtKeyFullScreen->setText(strncmp(changed_prefs.fullscreen_toggle, "", 1) != 0
+		                          ? changed_prefs.fullscreen_toggle
+		                          : "Click to map");
 }
 
-bool HelpPanelMisc(std::vector<std::string> &helptext)
+bool HelpPanelMisc(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("\"Status Line\" Shows/Hides the status line indicator.");
@@ -402,13 +443,19 @@ bool HelpPanelMisc(std::vector<std::string> &helptext)
 	helptext.emplace_back("When you have a HDD in your Amiga emulation, the HD indicator shows read (blue) and write");
 	helptext.emplace_back("(red) access to the HDD. The next values are showing the track number for each disk drive");
 	helptext.emplace_back("and indicates disk access.");
-	helptext.emplace_back("");
-	helptext.emplace_back("When you deactivate the option \"Show GUI on startup\" and use this configuration ");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("When you deactivate the option \"Show GUI on startup\" and use this configuration");
 	helptext.emplace_back("by specifying it with the command line parameter \"-config=<file>\", ");
 	helptext.emplace_back("the emulation starts directly without showing the GUI.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("\"bsdsocket.library\" enables network functions (i.e. for web browsers in OS3.9).");
-	helptext.emplace_back("");
+	helptext.emplace_back("You don't need to use a TCP stack (e.g. AmiTCP/Genesis/Roadshow) when this option is enabled.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("\"Master floppy drive protection\" will disable all write access to floppy disks.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can set some of the keyboard LEDs to react on drive activity, using the relevant options.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Finally, you can assign the desired hotkeys to Open the GUI, Quit the emulator,");
+	helptext.emplace_back("open Action Replay/HRTMon or toggle Fullscreen mode ON/OFF.");
 	return true;
 }

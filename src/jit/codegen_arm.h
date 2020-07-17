@@ -1,5 +1,5 @@
 /*
- * compiler/codegen_arm.h - IA-32 and AMD64 code generator
+ * compiler/codegen_arm.h - ARM code generator
  *
  * Copyright (c) 2013 Jens Heitmann of ARAnyM dev team (see AUTHORS)
  * 
@@ -1327,8 +1327,7 @@ enum {
 #define SMULxy_rrr(Rd,Rn,Rm,x,y)        CC_SMULxy_rrr(NATIVE_CC_AL,Rd,Rn,Rm,x,y)
 
 // ARMv6T2
-//#ifdef ARMV6T2
-#if 1
+#ifdef ARMV6T2
 
 #define CC_BFI_rrii(cc,Rd,Rn,lsb,msb)   _W(((cc) << 28) | (0x3e << 21) | ((msb) << 16) | ((Rd) << 12) | ((lsb) << 7) | (0x1 << 4) | (Rn))
 #define BFI_rrii(Rd,Rn,lsb,msb)         CC_BFI_rrii(NATIVE_CC_AL,Rd,Rn,lsb,msb)
@@ -1475,6 +1474,9 @@ enum {
 #define CC_VMSR_r(cc,Rt)  							_W(((cc) << 28) | (0xe << 24) | (0xe << 20) | (0x1 << 16) | ((Rt) << 12) | (0xa << 8) | (0x1 << 4))
 #define VMSR_r(Rt)											CC_VMSR_r(NATIVE_CC_AL,Rt)
 
+#define VBIT64_ddd(Dd,Dn,Dm)            _W(((0xf) << 28) | (0x3 << 24) | (0x2 << 20) | (0x1 << 8) | (0x1 << 4) | MAKE_Dd(Dd) | MAKE_Dn(Dn) | MAKE_Dm(Dm))
+#define VBIF64_ddd(Dd,Dn,Dm)            _W(((0xf) << 28) | (0x3 << 24) | (0x3 << 20) | (0x1 << 8) | (0x1 << 4) | MAKE_Dd(Dd) | MAKE_Dn(Dn) | MAKE_Dm(Dm))
+
 // Immediate values for VBIC, VMOV (I32), VMVN (I32) and VORR
 #define FIMMVAL(imm)             ((((imm) & 0x80) << 17) | (((imm) & 0x70) << 12) | (((imm) & 0x0f) << 0))
 #define FIMM32(imm)               (((imm) & 0xffffff00) == 0 ? (FIMMVAL((imm) >>  0) | (0x0 << 8)) : \
@@ -1500,6 +1502,7 @@ enum {
 #define VSHL64_ddi(Dd,Dm,imm)       		_W((0xf << 28) | (0x2 << 24) | (0x8 << 20) | (0x5 << 8) | (0x9 << 4) | MAKE_Dd(Dd) | MAKE_Dm(Dm) | FIMM6(imm))
 #define VSHR64_ddi(Dd,Dm,imm)       		_W((0xf << 28) | (0x3 << 24) | (0x8 << 20) | (0x0 << 8) | (0x9 << 4) | MAKE_Dd(Dd) | MAKE_Dm(Dm) | FIMM6(64-(imm)))
 #define VSLI64_ddi(Dd,Dm,i)      				_W((0xf << 28) | (0x3 << 24) | (0x8 << 20) | (0x5 << 8) | (0x9 << 4) | MAKE_Dd(Dd) | MAKE_Dm(Dm) | FIMM6(i))
+#define VSHL64_ddd(Dd,Dm,Dn)       		  _W((0xf << 28) | (0x3 << 24) | (0x3 << 20) | (0x4 << 8) | (0x0 << 4) | MAKE_Dd(Dd) | MAKE_Dn(Dn) | MAKE_Dm(Dm))
 
 #define VORR_ddd(Dd,Dn,Dm)       				_W((0xf << 28) | (0x2 << 24) | (0x2 << 20) | (0x1 << 8) | (0x1 << 4) | MAKE_Dd(Dd) | MAKE_Dn(Dn) | MAKE_Dm(Dm))
 

@@ -1,14 +1,7 @@
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
 
 #include "sysdeps.h"
@@ -20,19 +13,26 @@ static gcn::Label* lblSystemROMs;
 static gcn::TextField* txtSystemROMs;
 static gcn::Button* cmdSystemROMs;
 
-static gcn::Label *lblControllersPath;
-static gcn::TextField *txtControllersPath;
-static gcn::Button *cmdControllersPath;
+static gcn::Label* lblControllersPath;
+static gcn::TextField* txtControllersPath;
+static gcn::Button* cmdControllersPath;
 
 static gcn::Label* lblConfigPath;
 static gcn::TextField* txtConfigPath;
 static gcn::Button* cmdConfigPath;
 
-static gcn::Label *lblRetroArchFile;
-static gcn::TextField *txtRetroArchFile;
-static gcn::Button *cmdRetroArchFile;
+static gcn::Label* lblRetroArchFile;
+static gcn::TextField* txtRetroArchFile;
+static gcn::Button* cmdRetroArchFile;
+
+static gcn::CheckBox* chkEnableLogging;
+static gcn::Label* lblLogfilePath;
+static gcn::TextField* txtLogfilePath;
+static gcn::Button* cmdLogfilePath;
 
 static gcn::Button* cmdRescanROMs;
+static gcn::Button* cmdDownloadXML;
+
 
 class FolderButtonActionListener : public gcn::ActionListener
 {
@@ -43,10 +43,10 @@ public:
 
 		if (actionEvent.getSource() == cmdSystemROMs)
 		{
-			fetch_rompath(tmp, MAX_DPATH);
+			get_rom_path(tmp, MAX_DPATH);
 			if (SelectFolder("Folder for System ROMs", tmp))
 			{
-				set_rompath(tmp);
+				set_rom_path(tmp);
 				save_amiberry_settings();
 				RefreshPanelPaths();
 			}
@@ -54,10 +54,10 @@ public:
 		}
 		else if (actionEvent.getSource() == cmdConfigPath)
 		{
-			fetch_configurationpath(tmp, MAX_DPATH);
+			get_configuration_path(tmp, MAX_DPATH);
 			if (SelectFolder("Folder for configuration files", tmp))
 			{
-				set_configurationpath(tmp);
+				set_configuration_path(tmp);
 				save_amiberry_settings();
 				RefreshPanelPaths();
 				RefreshPanelConfig();
@@ -66,10 +66,10 @@ public:
 		}
 		else if (actionEvent.getSource() == cmdControllersPath)
 		{
-			fetch_controllerspath(tmp, MAX_DPATH);
+			get_controllers_path(tmp, MAX_DPATH);
 			if (SelectFolder("Folder for controller files", tmp))
 			{
-				set_controllerspath(tmp);
+				set_controllers_path(tmp);
 				save_amiberry_settings();
 				RefreshPanelPaths();
 			}
@@ -78,21 +78,45 @@ public:
 
 		else if (actionEvent.getSource() == cmdRetroArchFile)
 		{
-			const char *filter[] = { "retroarch.cfg", "\0" };
-			fetch_retroarchfile(tmp, MAX_DPATH);
+			const char* filter[] = {"retroarch.cfg", "\0"};
+			get_retroarch_file(tmp, MAX_DPATH);
 			if (SelectFile("Select RetroArch Config File", tmp, filter))
 			{
-				set_retroarchfile(tmp);
+				set_retroarch_file(tmp);
 				save_amiberry_settings();
 				RefreshPanelPaths();
 			}
 			cmdRetroArchFile->requestFocus();
+		}
+
+		else if (actionEvent.getSource() == cmdLogfilePath)
+		{
+			const char* filter[] = { "amiberry.log", "\0" };
+			get_logfile_path(tmp, MAX_DPATH);
+			if (SelectFile("Select Amiberry Log file", tmp, filter, true))
+			{
+				set_logfile_path(tmp);
+				save_amiberry_settings();
+				RefreshPanelPaths();
+			}
+			cmdLogfilePath->requestFocus();
 		}
 	}
 };
 
 static FolderButtonActionListener* folderButtonActionListener;
 
+class EnableLoggingActionListener : public gcn::ActionListener
+{
+public:
+	void action(const gcn::ActionEvent& actionEvent) override
+	{
+		set_logfile_enabled(chkEnableLogging->isSelected());
+		RefreshPanelPaths();
+	}
+};
+
+static EnableLoggingActionListener* enableLoggingActionListener;
 
 class RescanROMsButtonActionListener : public gcn::ActionListener
 {
@@ -100,18 +124,91 @@ public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
 		RescanROMs();
+		SymlinkROMs();
+
 		import_joysticks();
 		RefreshPanelInput();
 		RefreshPanelCustom();
 		RefreshPanelROM();
 
-		ShowMessage("Rescan Paths", "Scan complete", "", "Ok", "");
+		ShowMessage("Rescan Paths", "Scan complete,", "Symlinks recreated.", "Ok", "");
 		cmdRescanROMs->requestFocus();
 	}
 };
 
 static RescanROMsButtonActionListener* rescanROMsButtonActionListener;
 
+int date_cmp(const char* d1, const char* d2)
+{
+	// compare years
+	auto rc = strncmp(d1 + 0, d2 + 0, 4);
+	if (rc != 0)
+		return rc;
+
+	auto n = 0;
+
+	for (auto m = 0; m < 5; ++m)
+	{
+		switch (m)
+		{
+		case 0: n = 5;
+			break; // compare months
+		case 1: n = 8;
+			break; // compare days
+		case 2: n = 14;
+			break; // compare hours
+		case 3: n = 17;
+			break; // compare minutes
+		case 4: n = 20;
+			break; // compare seconds
+		}
+
+		rc = strncmp(d1 + n, d2 + n, 2);
+		if (rc != 0)
+			return rc;
+	}
+
+	return strncmp(d1, d2, 2);
+}
+
+class DownloadXMLButtonActionListener : public gcn::ActionListener
+{
+public:
+	void action(const gcn::ActionEvent& actionEvent) override
+	{
+		char destination[MAX_DPATH];
+
+		//  download WHDLoad executable
+		snprintf(destination, MAX_DPATH, "%s/whdboot/WHDLoad", start_path_data);
+		write_log("Downloading %s ...\n", destination);
+		download_file("https://github.com/midwan/amiberry/blob/master/whdboot/WHDLoad?raw=true", destination);
+
+		//  download boot-data.zip
+		snprintf(destination, MAX_DPATH, "%s/whdboot/boot-data.zip", start_path_data);
+		write_log("Downloading %s ...\n", destination);
+		download_file("https://github.com/midwan/amiberry/blob/master/whdboot/boot-data.zip?raw=true", destination);
+
+		// download kickstart RTB files for maximum compatibility
+		download_rtb("kick33180.A500.RTB");
+		download_rtb("kick34005.A500.RTB");
+		download_rtb("kick40063.A600.RTB");
+		download_rtb("kick40068.A1200.RTB");
+		download_rtb("kick40068.A4000.RTB");
+
+		snprintf(destination, MAX_DPATH, "%s/whdboot/game-data/whdload_db.xml", start_path_data);
+		write_log("Downloading %s ...\n", destination);
+		const auto result = download_file("https://github.com/HoraceAndTheSpider/Amiberry-XML-Builder/blob/master/whdload_db.xml?raw=true", destination);
+
+		if (result)
+			ShowMessage("XML Downloader", "Updated XML downloaded.", "", "Ok", "");
+		else
+			ShowMessage("XML Downloader", "Failed to download files!", "Please check the log for more details.", "Ok", "");
+		
+		cmdDownloadXML->requestFocus();
+	}
+};
+
+static DownloadXMLButtonActionListener* downloadXMLButtonActionListener;
 
 void InitPanelPaths(const struct _ConfigCategory& category)
 {
@@ -163,42 +260,74 @@ void InitPanelPaths(const struct _ConfigCategory& category)
 	cmdRetroArchFile->setBaseColor(gui_baseCol);
 	cmdRetroArchFile->addActionListener(folderButtonActionListener);
 
+	enableLoggingActionListener = new EnableLoggingActionListener();
+	chkEnableLogging = new gcn::CheckBox("Enable logging", true);
+	chkEnableLogging->setId("chkEnableLogging");
+	chkEnableLogging->addActionListener(enableLoggingActionListener);
+	
+	lblLogfilePath = new gcn::Label("Amiberry logfile path:");
+	txtLogfilePath = new gcn::TextField();
+	txtLogfilePath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
+	txtLogfilePath->setBackgroundColor(colTextboxBackground);
+
+	cmdLogfilePath = new gcn::Button("...");
+	cmdLogfilePath->setId("cmdLogfilePath");
+	cmdLogfilePath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+	cmdLogfilePath->setBaseColor(gui_baseCol);
+	cmdLogfilePath->addActionListener(folderButtonActionListener);
+	
 	category.panel->add(lblSystemROMs, DISTANCE_BORDER, yPos);
-	yPos += lblSystemROMs->getHeight() + DISTANCE_NEXT_Y;
+	yPos += lblSystemROMs->getHeight() + DISTANCE_NEXT_Y / 2;
 	category.panel->add(txtSystemROMs, DISTANCE_BORDER, yPos);
 	category.panel->add(cmdSystemROMs, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
 	yPos += txtSystemROMs->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblConfigPath, DISTANCE_BORDER, yPos);
-	yPos += lblConfigPath->getHeight() + DISTANCE_NEXT_Y;
+	yPos += lblConfigPath->getHeight() + DISTANCE_NEXT_Y / 2;
 	category.panel->add(txtConfigPath, DISTANCE_BORDER, yPos);
 	category.panel->add(cmdConfigPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
 	yPos += txtConfigPath->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblControllersPath, DISTANCE_BORDER, yPos);
-	yPos += lblControllersPath->getHeight() + DISTANCE_NEXT_Y;
+	yPos += lblControllersPath->getHeight() + DISTANCE_NEXT_Y / 2;
 	category.panel->add(txtControllersPath, DISTANCE_BORDER, yPos);
 	category.panel->add(cmdControllersPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
 	yPos += txtControllersPath->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblRetroArchFile, DISTANCE_BORDER, yPos);
-	yPos += lblRetroArchFile->getHeight() + DISTANCE_NEXT_Y;
+	yPos += lblRetroArchFile->getHeight() + DISTANCE_NEXT_Y / 2;
 	category.panel->add(txtRetroArchFile, DISTANCE_BORDER, yPos);
 	category.panel->add(cmdRetroArchFile, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
-	yPos += txtRetroArchFile->getHeight() + DISTANCE_NEXT_Y;
-	rescanROMsButtonActionListener = new RescanROMsButtonActionListener();
 
+	yPos += txtRetroArchFile->getHeight() + DISTANCE_NEXT_Y * 2;
+
+	category.panel->add(chkEnableLogging, DISTANCE_BORDER, yPos);
+	yPos += chkEnableLogging->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(lblLogfilePath, DISTANCE_BORDER, yPos);
+	yPos += lblLogfilePath->getHeight() + DISTANCE_NEXT_Y / 2;
+	category.panel->add(txtLogfilePath, DISTANCE_BORDER, yPos);
+	category.panel->add(cmdLogfilePath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+
+	rescanROMsButtonActionListener = new RescanROMsButtonActionListener();
 	cmdRescanROMs = new gcn::Button("Rescan Paths");
 	cmdRescanROMs->setSize(cmdRescanROMs->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
 	cmdRescanROMs->setBaseColor(gui_baseCol);
 	cmdRescanROMs->setId("RescanROMs");
 	cmdRescanROMs->addActionListener(rescanROMsButtonActionListener);
 
+	downloadXMLButtonActionListener = new DownloadXMLButtonActionListener();
+	cmdDownloadXML = new gcn::Button("Update WHDLoad XML");
+	cmdDownloadXML->setSize(cmdDownloadXML->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
+	cmdDownloadXML->setBaseColor(gui_baseCol);
+	cmdDownloadXML->setId("DownloadXML");
+	cmdDownloadXML->addActionListener(downloadXMLButtonActionListener);
+
 	category.panel->add(cmdRescanROMs, DISTANCE_BORDER, category.panel->getHeight() - BUTTON_HEIGHT - DISTANCE_BORDER);
+	category.panel->add(cmdDownloadXML, DISTANCE_BORDER + cmdRescanROMs->getWidth() + 20,
+	                    category.panel->getHeight() - BUTTON_HEIGHT - DISTANCE_BORDER);
 
 	RefreshPanelPaths();
 }
-
 
 void ExitPanelPaths()
 {
@@ -217,10 +346,18 @@ void ExitPanelPaths()
 	delete lblRetroArchFile;
 	delete txtRetroArchFile;
 	delete cmdRetroArchFile;
-	delete folderButtonActionListener;
 
+	delete chkEnableLogging;
+	delete lblLogfilePath;
+	delete txtLogfilePath;
+	delete cmdLogfilePath;
+	
 	delete cmdRescanROMs;
+	delete cmdDownloadXML;
+	delete folderButtonActionListener;
 	delete rescanROMsButtonActionListener;
+	delete downloadXMLButtonActionListener;
+	delete enableLoggingActionListener;
 }
 
 
@@ -228,27 +365,43 @@ void RefreshPanelPaths()
 {
 	char tmp[MAX_DPATH];
 
-	fetch_rompath(tmp, MAX_DPATH);
+	get_rom_path(tmp, MAX_DPATH);
 	txtSystemROMs->setText(tmp);
 
-	fetch_configurationpath(tmp, MAX_DPATH);
+	get_configuration_path(tmp, MAX_DPATH);
 	txtConfigPath->setText(tmp);
 
-	fetch_controllerspath(tmp, MAX_DPATH);
+	get_controllers_path(tmp, MAX_DPATH);
 	txtControllersPath->setText(tmp);
 
-	fetch_retroarchfile(tmp, MAX_DPATH);
-	txtRetroArchFile->setText(tmp); 
+	get_retroarch_file(tmp, MAX_DPATH);
+	txtRetroArchFile->setText(tmp);
+
+	chkEnableLogging->setSelected(get_logfile_enabled());
+	get_logfile_path(tmp, MAX_DPATH);
+	txtLogfilePath->setText(tmp);
+	
+	lblLogfilePath->setEnabled(chkEnableLogging->isSelected());
+	txtLogfilePath->setEnabled(chkEnableLogging->isSelected());
+	cmdLogfilePath->setEnabled(chkEnableLogging->isSelected());
 }
 
-bool HelpPanelPaths(std::vector<std::string> &helptext)
+bool HelpPanelPaths(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	helptext.emplace_back("Specify the location of your kickstart roms and the folders where the configurations");
-	helptext.emplace_back("and controller files should be stored. With the button \"...\" you can open a dialog");
+	helptext.emplace_back("Specify the location of your Kickstart ROMs and the folders where the configurations");
+	helptext.emplace_back("and controller files should be stored. With the \"...\" button you can open a dialog");
 	helptext.emplace_back("to choose the folder.");
-	helptext.emplace_back("");
-	helptext.emplace_back("After changing the location of the kickstart roms, click on \"Rescan\" to refresh");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can enable/disable logging and specify the location of the logfile with the relevant");
+	helptext.emplace_back("options.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("After changing the location of the Kickstart ROMs, click on \"Rescan\" to refresh");
 	helptext.emplace_back("the list of the available ROMs.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can download the latest version of the WHDLoad Booter XML file, using the");
+	helptext.emplace_back("relevant button. You will need an internet connection for this to work.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("These settings are saved automatically when you click Rescan, or exit the emulator.");
 	return true;
 }

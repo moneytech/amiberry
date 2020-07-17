@@ -18,6 +18,11 @@ CodeDB
 *.sdf
 *.suo
 *.old
+*.vgdbsettings
+
+### NetBeans ###
+nbproject*
+
 
 ### VSLinux ###
 VSLinux/obj
@@ -207,3 +212,6 @@ Thumbs.db
 
 
 .com.apple.timemachine.supported
+*.user
+*___jb_old___
+*.orig

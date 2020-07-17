@@ -2,26 +2,19 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeDropDown.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
+#include "memory.h"
 #include "autoconf.h"
 #include "filesys.h"
 #include "blkdev.h"
 #include "gui_handling.h"
+#include "amiberry_filesys.hpp"
 
 enum
 {
@@ -50,6 +43,7 @@ static const int COLUMN_SIZE[] =
 
 static const char* cdfile_filter[] = {".cue", ".ccd", ".iso", "\0"};
 static void AdjustDropDownControls();
+static bool bIgnoreListChange = false;
 
 static gcn::Label* lblList[COL_COUNT];
 static gcn::Container* listEntry[MAX_HD_DEVICES];
@@ -59,9 +53,10 @@ static gcn::ImageButton* listCmdDelete[MAX_HD_DEVICES];
 static gcn::Button* cmdAddDirectory;
 static gcn::Button* cmdAddHardfile;
 static gcn::Button* cmdCreateHardfile;
-static gcn::UaeCheckBox* chkHDReadOnly;
-static gcn::UaeCheckBox* chkCD;
-static gcn::UaeDropDown* cboCDFile;
+static gcn::CheckBox* chkHDReadOnly;
+static gcn::CheckBox* chkScsi;
+static gcn::CheckBox* chkCD;
+static gcn::DropDown* cboCDFile;
 static gcn::Button* cmdCDEject;
 static gcn::Button* cmdCDSelect;
 static gcn::Label* lblCDVol;
@@ -75,7 +70,7 @@ static int GetHDType(const int index)
 	auto type = get_filesys_unitconfig(&changed_prefs, index, &mi);
 	if (type < 0)
 	{
-		const auto uci = &changed_prefs.mountconfig[index];
+		auto* const uci = &changed_prefs.mountconfig[index];
 		type = uci->ci.type == UAEDEV_DIR ? FILESYS_VIRTUAL : FILESYS_HARDFILE;
 	}
 	return type;
@@ -93,9 +88,9 @@ public:
 		return lstMRUCDList.size();
 	}
 
-	string getElementAt(int i) override
+	string getElementAt(const int i) override
 	{
-		if (i < 0 || i >= lstMRUCDList.size())
+		if (i < 0 || i >= static_cast<int>(lstMRUCDList.size()))
 			return "---";
 		return lstMRUCDList[i];
 	}
@@ -226,6 +221,14 @@ public:
 			{
 				changed_prefs.cdslots[0].inuse = true;
 				changed_prefs.cdslots[0].type = SCSI_UNIT_IMAGE;
+
+				if (!changed_prefs.cs_cd32cd && !changed_prefs.cs_cd32nvram
+					&& (!changed_prefs.cs_cdtvcd && !changed_prefs.cs_cdtvram)
+					&& !changed_prefs.scsi)
+				{
+					changed_prefs.scsi = 1;
+					chkScsi->setSelected(true);
+				}
 			}
 			RefreshPanelHD();
 			RefreshPanelQuickstart();
@@ -256,17 +259,17 @@ public:
 			if (strlen(changed_prefs.cdslots[0].name) > 0)
 				strncpy(tmp, changed_prefs.cdslots[0].name, MAX_DPATH);
 			else
-				strcpy(tmp, currentDir);
+				strcpy(tmp, current_dir);
 
 			if (SelectFile("Select CD image file", tmp, cdfile_filter))
 			{
 				if (strncmp(changed_prefs.cdslots[0].name, tmp, MAX_DPATH) != 0)
 				{
-					strncpy(changed_prefs.cdslots[0].name, tmp, sizeof(changed_prefs.cdslots[0].name));
+					strncpy(changed_prefs.cdslots[0].name, tmp, sizeof changed_prefs.cdslots[0].name);
 					changed_prefs.cdslots[0].inuse = true;
 					changed_prefs.cdslots[0].type = SCSI_UNIT_IMAGE;
 					AddFileToCDList(tmp, 1);
-					extractPath(tmp, currentDir);
+					extract_path(tmp, current_dir);
 
 					AdjustDropDownControls();
 				}
@@ -288,7 +291,7 @@ public:
 	{
 		if (actionEvent.getSource() == sldCDVol)
 		{
-			const auto newvol = 100 - int(sldCDVol->getValue());
+			const auto newvol = 100 - static_cast<int>(sldCDVol->getValue());
 			if (changed_prefs.sound_volume_cd != newvol)
 			{
 				changed_prefs.sound_volume_cd = newvol;
@@ -299,13 +302,14 @@ public:
 		{
 			changed_prefs.harddrive_read_only = chkHDReadOnly->isSelected();
 		}
+		else if (actionEvent.getSource() == chkScsi) 
+		{
+			changed_prefs.scsi = chkScsi->isSelected();
+		}
 	}
 };
 
 GenericActionListener* genericActionListener;
-
-
-static bool bIgnoreListChange = false;
 
 class CDFileActionListener : public gcn::ActionListener
 {
@@ -328,7 +332,8 @@ public:
 			{
 				if (cdfileList.getElementAt(idx) != changed_prefs.cdslots[0].name)
 				{
-					strncpy(changed_prefs.cdslots[0].name, cdfileList.getElementAt(idx).c_str(), sizeof changed_prefs.cdslots[0].name);
+					strncpy(changed_prefs.cdslots[0].name, cdfileList.getElementAt(idx).c_str(),
+					        sizeof changed_prefs.cdslots[0].name);
 					changed_prefs.cdslots[0].inuse = true;
 					changed_prefs.cdslots[0].type = SCSI_UNIT_IMAGE;
 					lstMRUCDList.erase(lstMRUCDList.begin() + idx);
@@ -366,11 +371,7 @@ void InitPanelHD(const struct _ConfigCategory& category)
 		listEntry[row] = new gcn::Container();
 		listEntry[row]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, SMALL_BUTTON_HEIGHT + 4);
 		listEntry[row]->setBaseColor(gui_baseCol);
-#ifdef USE_SDL1
-		listEntry[row]->setFrameSize(0);
-#elif USE_SDL2
 		listEntry[row]->setBorderSize(0);
-#endif
 
 		listCmdProps[row] = new gcn::Button("...");
 		listCmdProps[row]->setBaseColor(gui_baseCol);
@@ -379,7 +380,7 @@ void InitPanelHD(const struct _ConfigCategory& category)
 		listCmdProps[row]->setId(tmp);
 		listCmdProps[row]->addActionListener(hdEditActionListener);
 
-		listCmdDelete[row] = new gcn::ImageButton("data/delete.png");
+		listCmdDelete[row] = new gcn::ImageButton(prefix_with_application_directory_path("data/delete.png"));
 		listCmdDelete[row]->setBaseColor(gui_baseCol);
 		listCmdDelete[row]->setSize(SMALL_BUTTON_HEIGHT, SMALL_BUTTON_HEIGHT);
 		snprintf(tmp, 20, "cmdDel%d", row);
@@ -397,19 +398,19 @@ void InitPanelHD(const struct _ConfigCategory& category)
 
 	cmdAddDirectory = new gcn::Button("Add Directory");
 	cmdAddDirectory->setBaseColor(gui_baseCol);
-	cmdAddDirectory->setSize(cmdAddDirectory->getWidth(), BUTTON_HEIGHT);
+	cmdAddDirectory->setSize(cmdAddDirectory->getWidth() + 10, BUTTON_HEIGHT);
 	cmdAddDirectory->setId("cmdAddDir");
 	cmdAddDirectory->addActionListener(addVirtualHDActionListener);
 
 	cmdAddHardfile = new gcn::Button("Add Hardfile");
 	cmdAddHardfile->setBaseColor(gui_baseCol);
-	cmdAddHardfile->setSize(cmdAddHardfile->getWidth(), BUTTON_HEIGHT);
+	cmdAddHardfile->setSize(cmdAddHardfile->getWidth() + 10, BUTTON_HEIGHT);
 	cmdAddHardfile->setId("cmdAddHDF");
 	cmdAddHardfile->addActionListener(addHardfileActionListener);
 
 	cmdCreateHardfile = new gcn::Button("Create Hardfile");
 	cmdCreateHardfile->setBaseColor(gui_baseCol);
-	cmdCreateHardfile->setSize(cmdCreateHardfile->getWidth(), BUTTON_HEIGHT);
+	cmdCreateHardfile->setSize(cmdCreateHardfile->getWidth() + 10, BUTTON_HEIGHT);
 	cmdCreateHardfile->setId("cmdCreateHDF");
 	cmdCreateHardfile->addActionListener(createHardfileActionListener);
 
@@ -418,11 +419,16 @@ void InitPanelHD(const struct _ConfigCategory& category)
 	cdFileActionListener = new CDFileActionListener();
 	genericActionListener = new GenericActionListener();
 
-	chkHDReadOnly = new gcn::UaeCheckBox("Master harddrive write protection");
+	chkHDReadOnly = new gcn::CheckBox("Master harddrive write protection");
 	chkHDReadOnly->setId("chkHDRO");
 	chkHDReadOnly->addActionListener(genericActionListener);
 
-	chkCD = new gcn::UaeCheckBox("CD drive");
+	chkScsi = new gcn::CheckBox("scsi.device emulation");
+	chkScsi->setId("chkSCSI");
+	chkScsi->addActionListener(genericActionListener);
+	
+	chkCD = new gcn::CheckBox("CD drive");
+	chkCD->setId("CD drive");
 	chkCD->addActionListener(cdCheckActionListener);
 
 	cmdCDEject = new gcn::Button("Eject");
@@ -437,7 +443,7 @@ void InitPanelHD(const struct _ConfigCategory& category)
 	cmdCDSelect->setId("CDSelect");
 	cmdCDSelect->addActionListener(cdButtonActionListener);
 
-	cboCDFile = new gcn::UaeDropDown(&cdfileList);
+	cboCDFile = new gcn::DropDown(&cdfileList);
 	cboCDFile->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboCDFile->getHeight());
 	cboCDFile->setBaseColor(gui_baseCol);
 	cboCDFile->setBackgroundColor(colTextboxBackground);
@@ -486,11 +492,13 @@ void InitPanelHD(const struct _ConfigCategory& category)
 	posY += cmdAddDirectory->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(chkHDReadOnly, DISTANCE_BORDER, posY);
+	category.panel->add(chkScsi, chkHDReadOnly->getX() + chkHDReadOnly->getWidth() + DISTANCE_NEXT_X * 3, posY);
 	posY += chkHDReadOnly->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(chkCD, DISTANCE_BORDER, posY + 2);
 	category.panel->add(cmdCDEject,
-	                    category.panel->getWidth() - cmdCDEject->getWidth() - DISTANCE_NEXT_X - cmdCDSelect->getWidth() -
+	                    category.panel->getWidth() - cmdCDEject->getWidth() - DISTANCE_NEXT_X - cmdCDSelect->getWidth()
+	                    -
 	                    DISTANCE_BORDER, posY);
 	category.panel->add(cmdCDSelect, category.panel->getWidth() - cmdCDSelect->getWidth() - DISTANCE_BORDER, posY);
 	posY += cmdCDSelect->getHeight() + DISTANCE_NEXT_Y;
@@ -526,6 +534,7 @@ void ExitPanelHD()
 	delete cmdAddHardfile;
 	delete cmdCreateHardfile;
 	delete chkHDReadOnly;
+	delete chkScsi;
 
 	delete chkCD;
 	delete cmdCDEject;
@@ -550,6 +559,8 @@ void ExitPanelHD()
 
 static void AdjustDropDownControls()
 {
+	bIgnoreListChange = true;
+	
 	cboCDFile->clearSelected();
 	if (changed_prefs.cdslots[0].inuse && strlen(changed_prefs.cdslots[0].name) > 0)
 	{
@@ -562,6 +573,7 @@ static void AdjustDropDownControls()
 			}
 		}
 	}
+	bIgnoreListChange = false;
 }
 
 void RefreshPanelHD()
@@ -576,8 +588,8 @@ void RefreshPanelHD()
 	{
 		if (row < changed_prefs.mountitems)
 		{
-			auto uci = &changed_prefs.mountconfig[row];
-			const auto ci = &uci->ci;
+			auto* uci = &changed_prefs.mountconfig[row];
+			auto* const ci = &uci->ci;
 			auto type = get_filesys_unitconfig(&changed_prefs, row, &mi);
 			if (type < 0)
 			{
@@ -612,9 +624,9 @@ void RefreshPanelHD()
 				if (nosize)
 					snprintf(tmp, 32, "n/a");
 				else if (mi.size >= 1024 * 1024 * 1024)
-					snprintf(tmp, 32, "%.1fG", double(uae_u32(mi.size / (1024 * 1024))) / 1024.0);
+					snprintf(tmp, 32, "%.1fG", static_cast<double>(uae_u32(mi.size / (1024 * 1024))) / 1024.0);
 				else
-					snprintf(tmp, 32, "%.1fM", double(uae_u32(mi.size / 1024)) / 1024.0);
+					snprintf(tmp, 32, "%.1fM", static_cast<double>(uae_u32(mi.size / 1024)) / 1024.0);
 				listCells[row][COL_SIZE]->setText(tmp);
 				snprintf(tmp, 32, "%d", ci->bootpri);
 				listCells[row][COL_BOOTPRI]->setText(tmp);
@@ -633,12 +645,14 @@ void RefreshPanelHD()
 	}
 
 	chkHDReadOnly->setSelected(changed_prefs.harddrive_read_only);
-
+	chkScsi->setSelected(changed_prefs.scsi);
 	chkCD->setSelected(changed_prefs.cdslots[0].inuse);
 	cmdCDEject->setEnabled(changed_prefs.cdslots[0].inuse);
 	cmdCDSelect->setEnabled(changed_prefs.cdslots[0].inuse);
 	cboCDFile->setEnabled(changed_prefs.cdslots[0].inuse);
 	sldCDVol->setEnabled(changed_prefs.cdslots[0].inuse);
+	lblCDVol->setEnabled(changed_prefs.cdslots[0].inuse);
+	lblCDVolInfo->setEnabled(changed_prefs.cdslots[0].inuse);
 
 	sldCDVol->setValue(100 - changed_prefs.sound_volume_cd);
 	snprintf(tmp, 32, "%d %%", 100 - changed_prefs.sound_volume_cd);
@@ -657,16 +671,16 @@ bool HelpPanelHD(std::vector<std::string>& helptext)
 	helptext.emplace_back(R"(Use "Add Directory" to add a folder or "Add Hardfile" to add a HDF file as)");
 	helptext.emplace_back("a hard disk. To edit the settings of a HDD, click on \"...\" left to the entry in");
 	helptext.emplace_back("the list. With the red cross, you can delete an entry.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("With \"Create Hardfile\", you can create a new formatted HDF file up to 2 GB.");
 	helptext.emplace_back("For large files, it will take some time to create the new hard disk. You have to");
 	helptext.emplace_back("format the new HDD in the Amiga via the Workbench.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("If \"Master harddrive write protection\" is activated, you can't write to any HD.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back(R"(Activate "CD drive" to emulate CD for CD32. Use "Eject" to remove current CD)");
 	helptext.emplace_back("and click on \"...\" to open a dialog to select the iso/cue file for CD emulation.");
-	helptext.emplace_back("");
-	helptext.emplace_back("In current version, WAV, MP3 and FLAC is supported for audio tracks.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("In the current version, WAV, MP3 and FLAC files are supported for audio tracks.");
 	return true;
 }

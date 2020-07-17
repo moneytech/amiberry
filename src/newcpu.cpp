@@ -5,11 +5,6 @@
   *
   * (c) 1995 Bernd Schmidt
   */
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
 
 #include "sysdeps.h"
 
@@ -24,6 +19,7 @@
 #include "savestate.h"
 #include "blitter.h"
 #include "ar.h"
+#include "inputdevice.h"
 #include "audio.h"
 #include "threaddep/thread.h"
 #include "bsdsocket.h"
@@ -37,15 +33,19 @@ bool check_prefs_changed_comp (bool checkonly) { return false; }
 #endif
 
 /* Opcode of faulting instruction */
-static uae_u16 last_op_for_exception_3;
+static uae_u32 last_op_for_exception_3;
 /* PC at fault time */
 static uaecptr last_addr_for_exception_3;
 /* Address that generated the exception */
 static uaecptr last_fault_for_exception_3;
 /* read (0) or write (1) access */
 static bool last_writeaccess_for_exception_3;
-/* instruction (1) or data (0) access */
-static bool last_instructionaccess_for_exception_3;
+/* size */
+static bool last_size_for_exception_3;
+/* FC */
+static int last_fc_for_exception_3;
+/* Data (1) or instruction fetch (0) */
+static int last_di_for_exception_3;
 /* not instruction */
 static bool last_notinstruction_for_exception_3;
 /* set when writing exception stack frame */
@@ -82,54 +82,56 @@ static uae_u64 fake_srp_030, fake_crp_030;
 static uae_u32 fake_tt0_030, fake_tt1_030, fake_tc_030;
 static uae_u16 fake_mmusr_030;
 
+int cpu_last_stop_vpos, cpu_stopped_lines;
+
 #if COUNT_INSTRS
-static unsigned long int instrcount[65536];
+static unsigned long instrcount[65536];
 static uae_u16 opcodenums[65536];
 
-static int compfn(const void *el1, const void *el2)
+static int compfn (const void *el1, const void *el2)
 {
 	return instrcount[*(const uae_u16 *)el1] < instrcount[*(const uae_u16 *)el2];
 }
 
-static TCHAR *icountfilename(void)
+static TCHAR *icountfilename (void)
 {
-	TCHAR *name = getenv("INSNCOUNT");
+	TCHAR *name = getenv ("INSNCOUNT");
 	if (name)
 		return name;
 	return (TCHAR *)(COUNT_INSTRS == 2 ? _T("frequent.68k") : _T("insncount"));
 }
 
-void dump_counts(void)
+void dump_counts (void)
 {
-	FILE *f = fopen(icountfilename(), "w");
-	unsigned long int total;
+	FILE *f = fopen (icountfilename (), "w");
+	unsigned long total;
 	int i;
 
-	write_log(_T("Writing instruction count file...\n"));
+	write_log (_T("Writing instruction count file...\n"));
 	for (i = 0; i < 65536; i++) {
 		opcodenums[i] = i;
 		total += instrcount[i];
 	}
-	qsort(opcodenums, 65536, sizeof(uae_u16), compfn);
+	qsort (opcodenums, 65536, sizeof (uae_u16), compfn);
 
-	fprintf(f, "Total: %lu\n", total);
-	for (i = 0; i < 65536; i++) {
-		unsigned long int cnt = instrcount[opcodenums[i]];
+	fprintf (f, "Total: %lu\n", total);
+	for (i=0; i < 65536; i++) {
+		unsigned long cnt = instrcount[opcodenums[i]];
 		struct instr *dp;
 		struct mnemolookup *lookup;
 		if (!cnt)
 			break;
 		dp = table68k + opcodenums[i];
-		for (lookup = lookuptab; lookup->mnemo != dp->mnemo; lookup++)
+		for (lookup = lookuptab;lookup->mnemo != dp->mnemo; lookup++)
 			;
-		fprintf(f, "%04x: %8lu %s\n", opcodenums[i], cnt, lookup->name);
+		fprintf (f, "%04x: %8lu %s\n", opcodenums[i], cnt, lookup->name);
 	}
-	fclose(f);
+	fclose (f);
 }
 
-STATIC_INLINE void count_instr(unsigned int opcode)
+STATIC_INLINE void count_instr (unsigned int opcode)
 {
-	instrcount[opcode]++;
+  instrcount[opcode]++;
 }
 #else
 void dump_counts(void)
@@ -157,12 +159,12 @@ static void set_x_funcs(void)
 		if (currprefs.cpu_compatible)
 		{
 			// cpu_compatible only
-			x_put_long = put_long;
-			x_put_word = put_word;
-			x_put_byte = put_byte;
-			x_get_long = get_long;
-			x_get_word = get_word;
-			x_get_byte = get_byte;
+			x_put_long = put_long_compatible;
+			x_put_word = put_word_compatible;
+			x_put_byte = put_byte_compatible;
+			x_get_long = get_long_compatible;
+			x_get_word = get_word_compatible;
+			x_get_byte = get_byte_compatible;
 		}
 		else
 		{
@@ -198,7 +200,7 @@ static void set_x_funcs(void)
 	}
 }
 
-void flush_cpu_caches(bool force)
+static void flush_cpu_caches(bool force)
 {
 	if (currprefs.cpu_model == 68020)
 	{
@@ -350,7 +352,7 @@ static void build_cpufunctbl(void)
 	for (opcode = 0; opcode < 65536; opcode++)
 	{
 		cpuop_func* f;
-		instr* table = &table68k[opcode];
+		struct instr* table = &table68k[opcode];
 
 		if (table->mnemo == i_ILLG)
 			continue;
@@ -384,16 +386,14 @@ static void build_cpufunctbl(void)
 		}
 	}
 #ifdef JIT
-	write_log(_T("JIT: &countdown =  %p\n"), &countdown);
-	write_log(_T("JIT: &build_comp = %p\n"), &build_comp);
 	build_comp();
 #endif
 
 	write_log(_T("CPU=%d, FPU=%d%s, JIT%s=%d."),
-		currprefs.cpu_model,
-		currprefs.fpu_model, currprefs.fpu_model ? _T(" (host)") : _T(""),
-		currprefs.cachesize ? (currprefs.compfpu ? _T("=CPU/FPU") : _T("=CPU")) : _T(""),
-		currprefs.cachesize);
+	          currprefs.cpu_model,
+	          currprefs.fpu_model, currprefs.fpu_model ? _T(" (host)") : _T(""),
+	          currprefs.cachesize ? (currprefs.compfpu ? _T("=CPU/FPU") : _T("=CPU")) : _T(""),
+	          currprefs.cachesize);
 
 	regs.address_space_mask = 0xffffffff;
 	if (currprefs.cpu_compatible)
@@ -407,7 +407,7 @@ static void build_cpufunctbl(void)
 		write_log(_T(" prefetch"));
 	}
 	if (currprefs.m68k_speed < 0)
-	write_log(_T(" fast"));
+		write_log(_T(" fast"));
 	if (currprefs.fpu_no_unimplemented && currprefs.fpu_model)
 	{
 		write_log(_T(" no unimplemented floating point instructions"));
@@ -422,8 +422,8 @@ static void build_cpufunctbl(void)
 	set_cpu_caches(true);
 }
 
-static unsigned long cycles_shift;
-static unsigned long cycles_shift_2;
+static uae_u32 cycles_shift;
+static uae_u32 cycles_shift_2;
 
 static void update_68k_cycles(void)
 {
@@ -461,13 +461,51 @@ static void prefs_changed_cpu(void)
 	check_prefs_changed_comp(false);
 	currprefs.cpu_model = changed_prefs.cpu_model;
 	currprefs.fpu_model = changed_prefs.fpu_model;
+	//if (currprefs.mmu_model != changed_prefs.mmu_model) {
+	//	int oldmmu = currprefs.mmu_model;
+	//	currprefs.mmu_model = changed_prefs.mmu_model;
+	//	if (currprefs.mmu_model >= 68040) {
+	//		uae_u32 tcr = regs.tcr;
+	//		mmu_reset();
+	//		mmu_set_tc(tcr);
+	//		mmu_set_super(regs.s != 0);
+	//		mmu_tt_modified();
+	//	}
+	//	else if (currprefs.mmu_model == 68030) {
+	//		mmu030_reset(-1);
+	//		mmu030_flush_atc_all();
+	//		tc_030 = fake_tc_030;
+	//		tt0_030 = fake_tt0_030;
+	//		tt1_030 = fake_tt1_030;
+	//		srp_030 = fake_srp_030;
+	//		crp_030 = fake_crp_030;
+	//		mmu030_decode_tc(tc_030, false);
+	//	}
+	//	else if (oldmmu == 68030) {
+	//		fake_tc_030 = tc_030;
+	//		fake_tt0_030 = tt0_030;
+	//		fake_tt1_030 = tt1_030;
+	//		fake_srp_030 = srp_030;
+	//		fake_crp_030 = crp_030;
+	//	}
+	//}
+	currprefs.mmu_ec = changed_prefs.mmu_ec;
 	if (currprefs.cpu_compatible != changed_prefs.cpu_compatible)
 	{
 		currprefs.cpu_compatible = changed_prefs.cpu_compatible;
 		flush_cpu_caches(true);
+		//invalidate_cpu_data_caches();
+	}
+	if (currprefs.cpu_data_cache != changed_prefs.cpu_data_cache) {
+		currprefs.cpu_data_cache = changed_prefs.cpu_data_cache;
+		//invalidate_cpu_data_caches();
 	}
 	currprefs.address_space_24 = changed_prefs.address_space_24;
+	currprefs.cpu_cycle_exact = changed_prefs.cpu_cycle_exact;
+	currprefs.cpu_memory_cycle_exact = changed_prefs.cpu_memory_cycle_exact;
+	currprefs.int_no_unimplemented = changed_prefs.int_no_unimplemented;
 	currprefs.fpu_no_unimplemented = changed_prefs.fpu_no_unimplemented;
+	currprefs.blitter_cycle_exact = changed_prefs.blitter_cycle_exact;
 }
 
 static int check_prefs_changed_cpu2(void)
@@ -480,13 +518,24 @@ static int check_prefs_changed_cpu2(void)
 	if (changed
 		|| currprefs.cpu_model != changed_prefs.cpu_model
 		|| currprefs.fpu_model != changed_prefs.fpu_model
+		|| currprefs.mmu_model != changed_prefs.mmu_model
+		|| currprefs.mmu_ec != changed_prefs.mmu_ec
+		|| currprefs.cpu_data_cache != changed_prefs.cpu_data_cache
+		|| currprefs.int_no_unimplemented != changed_prefs.int_no_unimplemented
 		|| currprefs.fpu_no_unimplemented != changed_prefs.fpu_no_unimplemented
-		|| currprefs.cpu_compatible != changed_prefs.cpu_compatible)
+		|| currprefs.cpu_compatible != changed_prefs.cpu_compatible
+		|| currprefs.cpu_cycle_exact != changed_prefs.cpu_cycle_exact
+		|| currprefs.cpu_memory_cycle_exact != changed_prefs.cpu_memory_cycle_exact
+		|| currprefs.fpu_mode != changed_prefs.fpu_mode)
 	{
 		cpu_prefs_changed_flag |= 1;
 	}
 	if (changed
-		|| currprefs.m68k_speed != changed_prefs.m68k_speed)
+		|| currprefs.m68k_speed != changed_prefs.m68k_speed
+		|| currprefs.m68k_speed_throttle != changed_prefs.m68k_speed_throttle
+		|| currprefs.cpu_clock_multiplier != changed_prefs.cpu_clock_multiplier
+		|| currprefs.reset_delay != changed_prefs.reset_delay
+		|| currprefs.cpu_frequency != changed_prefs.cpu_frequency)
 	{
 		cpu_prefs_changed_flag |= 2;
 	}
@@ -498,6 +547,11 @@ void check_prefs_changed_cpu(void)
 	if (!config_changed)
 		return;
 
+	currprefs.cpu_idle = changed_prefs.cpu_idle;
+	currprefs.ppc_cpu_idle = changed_prefs.ppc_cpu_idle;
+	currprefs.reset_delay = changed_prefs.reset_delay;
+	currprefs.cpuboard_settings = changed_prefs.cpuboard_settings;
+	
 	if (check_prefs_changed_cpu2())
 	{
 		set_special(SPCFLAG_MODE_CHANGE);
@@ -523,23 +577,16 @@ void init_m68k(void)
 	}
 
 #if COUNT_INSTRS
-	memset(instrcount, 0, sizeof instrcount);
+	memset (instrcount, 0, sizeof instrcount);
 #endif
 
 	read_table68k();
 	do_merges();
 
-	build_cpufunctbl();
-	set_x_funcs();
-	set_speedup_values();
+	write_log (_T("%d CPU functions\n"), nr_cpuop_funcs);
 }
 
 struct regstruct regs;
-
-int get_cpu_model(void)
-{
-	return currprefs.cpu_model;
-}
 
 STATIC_INLINE int in_rom(uaecptr pc)
 {
@@ -551,12 +598,17 @@ STATIC_INLINE int in_rtarea(uaecptr pc)
 	return (munge24(pc) & 0xFFFF0000) == rtarea_base && (uae_boot_rom_type || currprefs.uaeboard > 0);
 }
 
-STATIC_INLINE unsigned long adjust_cycles(unsigned long cycles)
+STATIC_INLINE uae_u32 adjust_cycles(uae_u32 cycles)
 {
-	unsigned long res = cycles >> cycles_shift;
+	uae_u32 res = cycles >> cycles_shift;
 	if (cycles_shift_2)
 		return res + (cycles >> cycles_shift_2);
 	return res;
+}
+
+void m68k_cancel_idle(void)
+{
+	cpu_last_stop_vpos = -1;
 }
 
 static void m68k_set_stop(void)
@@ -565,12 +617,19 @@ static void m68k_set_stop(void)
 		return;
 	regs.stopped = 1;
 	set_special(SPCFLAG_STOP);
+	if (cpu_last_stop_vpos >= 0) {
+		cpu_last_stop_vpos = vpos;
+	}
 }
 
 static void m68k_unset_stop(void)
 {
 	regs.stopped = 0;
 	unset_special(SPCFLAG_STOP);
+	if (cpu_last_stop_vpos >= 0) {
+		cpu_stopped_lines += vpos - cpu_last_stop_vpos;
+		cpu_last_stop_vpos = vpos;
+	}
 }
 
 static void activate_trace(void)
@@ -596,7 +655,7 @@ void REGPARAM2 MakeSR(void)
 		| GET_CFLG());
 }
 
-STATIC_INLINE void MakeFromSR_x(int t0trace)
+static void MakeFromSR_x(int t0trace)
 {
 	int oldm = regs.m;
 	int olds = regs.s;
@@ -619,6 +678,7 @@ STATIC_INLINE void MakeFromSR_x(int t0trace)
 	regs.s = (regs.sr >> 13) & 1;
 	regs.m = (regs.sr >> 12) & 1;
 	regs.intmask = (regs.sr >> 8) & 7;
+
 	if (currprefs.cpu_model >= 68020)
 	{
 		if (olds != regs.s)
@@ -702,8 +762,7 @@ void REGPARAM2 MakeFromSR(void)
 static void exception_check_trace(int nr)
 {
 	unset_special(SPCFLAG_TRACE | SPCFLAG_DOTRACE);
-	if (regs.t1 && !regs.t0)
-	{
+  if (regs.t1) {
 		/* trace stays pending if exception is div by zero, chk,
 * trapv or trap #x
 */
@@ -720,14 +779,6 @@ static int iack_cycle(int nr)
 	// non-autovectored
 	vector = x_get_byte(0x00fffff1 | ((nr - 24) << 1));
 	return vector;
-}
-
-static uae_u32 exception_pc(int nr)
-{
-	// bus error, address error, illegal instruction, privilege violation, a-line, f-line
-	if (nr == 2 || nr == 3 || nr == 4 || nr == 8 || nr == 10 || nr == 11)
-		return regs.instruction_pc;
-	return m68k_getpc();
 }
 
 static void add_approximate_exception_cycles(int nr)
@@ -824,79 +875,9 @@ static void add_approximate_exception_cycles(int nr)
 	x_do_cycles(cycles);
 }
 
-static void Exception_build_stack_frame(uae_u32 oldpc, uae_u32 currpc, uae_u32 ssw, int nr, int format)
-{
-	switch (format)
-	{
-	case 0x0: // four word stack frame
-		break;
-	case 0x2: // six word stack frame
-		m68k_areg(regs, 7) -= 4;
-		x_put_long(m68k_areg(regs, 7), oldpc);
-		break;
-	case 0x3: // floating point post-instruction stack frame (68040)
-		m68k_areg(regs, 7) -= 4;
-		x_put_long(m68k_areg(regs, 7), regs.fp_ea);
-		break;
-	case 0x4: // floating point unimplemented stack frame (68LC040, 68EC040)
-		m68k_areg(regs, 7) -= 4;
-		x_put_long(m68k_areg(regs, 7), ssw);
-		m68k_areg(regs, 7) -= 4;
-		x_put_long(m68k_areg(regs, 7), oldpc);
-		break;
-	default:
-		write_log(_T("Unknown exception stack frame format: %X\n"), format);
-		return;
-	}
-	m68k_areg(regs, 7) -= 2;
-	x_put_word(m68k_areg(regs, 7), (format << 12) | (nr * 4));
-	m68k_areg(regs, 7) -= 4;
-	x_put_long(m68k_areg(regs, 7), currpc);
-	m68k_areg(regs, 7) -= 2;
-	x_put_word(m68k_areg(regs, 7), regs.sr);
-}
+static void exception3_notinstruction(uae_u32 opcode, uaecptr addr);
 
-static void Exception_build_stack_frame_common(uae_u32 oldpc, uae_u32 currpc, int nr)
-{
-	if (nr == 5 || nr == 6 || nr == 7 || nr == 9)
-	{
-		Exception_build_stack_frame(oldpc, currpc, 0, nr, 0x2);
-	}
-	else if (nr == 60 || nr == 61)
-	{
-		Exception_build_stack_frame(oldpc, regs.instruction_pc, 0, nr, 0x0);
-	}
-	else if (nr >= 48 && nr <= 55)
-	{
-		if (regs.fpu_exp_pre)
-		{
-			Exception_build_stack_frame(oldpc, regs.instruction_pc, 0, nr, 0x0);
-		}
-		else
-		{
-			/* post-instruction */
-			Exception_build_stack_frame(oldpc, currpc, 0, nr, 0x3);
-		}
-	}
-	else if (nr == 11 && regs.fp_unimp_ins)
-	{
-		regs.fp_unimp_ins = false;
-		if (currprefs.cpu_model == 68040 && currprefs.fpu_model == 0)
-		{
-			Exception_build_stack_frame(regs.fp_ea, currpc, regs.instruction_pc, nr, 0x4);
-		}
-		else
-		{
-			Exception_build_stack_frame(regs.fp_ea, currpc, 0, nr, 0x2);
-		}
-	}
-	else
-	{
-		Exception_build_stack_frame(oldpc, currpc, 0, nr, 0x0);
-	}
-}
-
-void Exception(int nr)
+static void Exception_normal (int nr)
 {
 	uae_u32 newpc;
 	uae_u32 currpc = m68k_getpc();
@@ -906,11 +887,6 @@ void Exception(int nr)
 	int vector_nr = nr;
 
 	interrupt = nr >= 24 && nr < 24 + 8;
-
-#ifdef JIT
-	if (currprefs.cachesize)
-		regs.instruction_pc = m68k_getpc();
-#endif
 
 	if (interrupt && currprefs.cpu_model <= 68010)
 		vector_nr = iack_cycle(nr);
@@ -997,39 +973,34 @@ void Exception(int nr)
 					x_put_word(m68k_areg(regs, 7), regs.sr);
 					goto kludge_me_do;
 				}
-				m68k_areg(regs, 7) -= 4;
-				x_put_long(m68k_areg(regs, 7), last_fault_for_exception_3);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), 0x2000 + vector_nr * 4);
+				// 68040/060 odd PC address error
+				Exception_build_stack_frame(last_fault_for_exception_3, currpc, 0, nr, 0x02);
+				used_exception_build_stack_frame = true;
 			}
-			else
+			else if (currprefs.cpu_model >= 68020)
 			{
-				// 68020 address error
-				uae_u16 ssw = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
-				ssw |= last_writeaccess_for_exception_3 ? 0 : 0x40;
-				ssw |= 0x20;
-				for (i = 0; i < 36; i++)
-				{
-					m68k_areg(regs, 7) -= 2;
-					x_put_word(m68k_areg(regs, 7), 0);
-				}
-				m68k_areg(regs, 7) -= 4;
-				x_put_long(m68k_areg(regs, 7), last_fault_for_exception_3);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), 0);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), 0);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), 0);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), ssw);
-				m68k_areg(regs, 7) -= 2;
-				x_put_word(m68k_areg(regs, 7), 0xb000 + vector_nr * 4);
+				// 68020/030 odd PC address error (partially implemented only)
+				// annoyingly this generates frame B, not A.
+    		uae_u16 ssw = (sv ? 4 : 0) | last_fc_for_exception_3;
+    		ssw |= MMU030_SSW_RW | MMU030_SSW_SIZE_W;
+				regs.mmu_fault_addr = last_fault_for_exception_3;
+				Exception_build_stack_frame(last_fault_for_exception_3, currpc, ssw, nr, 0x0b);
+				used_exception_build_stack_frame = true;
+	    } else {
+				// 68010 bus/address error (partially implemented only)
+    		uae_u16 ssw = (sv ? 4 : 0) | last_fc_for_exception_3;
+				ssw |= last_di_for_exception_3 ? 0x0000 : 0x2000; // IF
+				ssw |= (!last_writeaccess_for_exception_3 && last_di_for_exception_3) ? 0x1000 : 0x000; // DF
+				ssw |= (last_op_for_exception_3 & 0x10000) ? 0x0400 : 0x0000; // HB
+				ssw |= last_size_for_exception_3 == 0 ? 0x0200 : 0x0000; // BY
+				ssw |= last_writeaccess_for_exception_3 ? 0x0000 : 0x0100; // RW
+				if (last_op_for_exception_3 & 0x20000)
+					ssw &= 0x00ff;
+				regs.mmu_fault_addr = last_addr_for_exception_3;
+				Exception_build_stack_frame(oldpc, currpc, ssw, nr, 0x08);
+				used_exception_build_stack_frame = true;
 			}
-		}
-		else if (regs.m && interrupt)
-		{
-			/* M + Interrupt */
+	  } else if (regs.m && interrupt) { /* M + Interrupt */
 			m68k_areg(regs, 7) -= 2;
 			x_put_word(m68k_areg(regs, 7), vector_nr * 4);
 			m68k_areg(regs, 7) -= 4;
@@ -1052,21 +1023,13 @@ void Exception(int nr)
 	else
 	{
 		nextpc = m68k_getpc();
-		if (nr == 2 || nr == 3)
-		{
-			// 68000 address error
-			uae_u16 mode = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
+    if (nr == 2 || nr == 3) {
+	    // 68000 bus/address error
+			uae_u16 mode = (sv ? 4 : 0) | last_fc_for_exception_3;
 			mode |= last_writeaccess_for_exception_3 ? 0 : 16;
 			mode |= last_notinstruction_for_exception_3 ? 8 : 0;
-			// undocumented bits seem to contain opcode
-			mode |= last_op_for_exception_3 & ~31;
-			m68k_areg(regs, 7) -= 14;
 			exception_in_exception = -1;
-			x_put_word(m68k_areg(regs, 7) + 0, mode);
-			x_put_long(m68k_areg(regs, 7) + 2, last_fault_for_exception_3);
-			x_put_word(m68k_areg(regs, 7) + 6, last_op_for_exception_3);
-			x_put_word(m68k_areg(regs, 7) + 8, regs.sr);
-			x_put_long(m68k_areg(regs, 7) + 10, last_addr_for_exception_3);
+			Exception_build_68000_address_error_stack_frame(mode, last_op_for_exception_3, last_fault_for_exception_3, last_addr_for_exception_3);
 			goto kludge_me_do;
 		}
 	}
@@ -1098,15 +1061,37 @@ kludge_me_do:
 	exception_check_trace(nr);
 }
 
+// address = format $2 stack frame address field
+static void ExceptionX (int nr)
+{
+	regs.exception = nr;
+
+#ifdef JIT
+  if (currprefs.cachesize)
+	  regs.instruction_pc = m68k_getpc ();
+#endif
+
+	{
+		Exception_normal(nr);
+	}
+	regs.exception = 0;
+}
+
 void REGPARAM2 Exception_cpu(int nr)
 {
-	bool t0 = currprefs.cpu_model >= 68020 && regs.t0;
-	Exception(nr);
-	// check T0 trace
-	if (t0)
-	{
+	bool t0 = currprefs.cpu_model >= 68020 && regs.t0 && !regs.t1;
+	ExceptionX (nr);
+	// Check T0 trace
+	// RTE format error ignores T0 trace
+	if (nr != 14) {
+	  if (t0) {
 		activate_trace();
 	}
+}
+}
+void REGPARAM2 Exception (int nr)
+{
+	ExceptionX (nr);
 }
 
 static void bus_error(void)
@@ -1143,6 +1128,13 @@ void NMI(void)
 	do_interrupt(7);
 }
 
+static void maybe_disable_fpu(void)
+{
+	if (!currprefs.fpu_model) {
+		regs.pcr |= 2;
+	}
+}
+
 static void m68k_reset_sr(void)
 {
 	SET_XFLG((regs.sr >> 4) & 1);
@@ -1176,13 +1168,13 @@ static void m68k_reset(bool hardreset)
 	regs.spcflags = 0;
 
 #ifdef SAVESTATE
-	if (isrestore())
-	{
+  if (isrestore ()) {
 		m68k_reset_sr();
 		m68k_setpc_normal(regs.pc);
 		return;
+	} else {
+		set_special(SPCFLAG_CHECK);
 	}
-	set_special(SPCFLAG_CHECK);
 #endif
 	regs.s = 1;
 	v = get_long(4);
@@ -1230,6 +1222,7 @@ static void m68k_reset(bool hardreset)
 	fake_mmusr_030 = 0;
 
 	regs.pcr = 0;
+
 	fill_prefetch();
 }
 
@@ -1248,7 +1241,7 @@ uae_u32 REGPARAM2 op_illg(uae_u32 opcode)
 
 	if (cloanto_rom && (opcode & 0xF100) == 0x7100)
 	{
-		m68k_dreg(regs, (opcode >> 9) & 7) = (uae_s8)(opcode & 0xFF);
+		m68k_dreg(regs, (opcode >> 9) & 7) = static_cast<uae_s8>(opcode & 0xFF);
 		m68k_incpc_normal(2);
 		fill_prefetch();
 		return 4;
@@ -1283,9 +1276,13 @@ uae_u32 REGPARAM2 op_illg(uae_u32 opcode)
 	}
 #endif
 
-	if ((opcode & 0xF000) == 0xF000)
-	{
+  if ((opcode & 0xF000) == 0xF000) {
+		// Missing MMU or FPU cpSAVE/cpRESTORE privilege check
+		if (privileged_copro_instruction(opcode)) {
+			Exception(8);
+		} else {
 		Exception(0xB);
+		}
 		return 4;
 	}
 	if ((opcode & 0xF000) == 0xA000)
@@ -1306,7 +1303,7 @@ static bool mmu_op30_invea(uae_u32 opcode)
 	int rreg = opcode & 7;
 
 	// Dn, An, (An)+, -(An), immediate and PC-relative not allowed
-	if (eamode == 0 || eamode == 1 || eamode == 3 || eamode == 4 || eamode == 6 || (eamode == 7 && rreg > 1))
+	if (eamode == 0 || eamode == 1 || eamode == 3 || eamode == 4 || (eamode == 7 && rreg > 1))
 		return true;
 	return false;
 }
@@ -1346,11 +1343,11 @@ static bool mmu_op30fake_pmove(uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr
 		if (rw)
 		{
 			x_put_long(extra, fake_srp_030 >> 32);
-			x_put_long(extra + 4, (uae_u32)fake_srp_030);
+			x_put_long(extra + 4, static_cast<uae_u32>(fake_srp_030));
 		}
 		else
 		{
-			fake_srp_030 = (uae_u64)x_get_long(extra) << 32;
+			fake_srp_030 = static_cast<uae_u64>(x_get_long(extra)) << 32;
 			fake_srp_030 |= x_get_long(extra + 4);
 		}
 		break;
@@ -1360,11 +1357,11 @@ static bool mmu_op30fake_pmove(uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr
 		if (rw)
 		{
 			x_put_long(extra, fake_crp_030 >> 32);
-			x_put_long(extra + 4, (uae_u32)fake_crp_030);
+			x_put_long(extra + 4, static_cast<uae_u32>(fake_crp_030));
 		}
 		else
 		{
-			fake_crp_030 = (uae_u64)x_get_long(extra) << 32;
+			fake_crp_030 = static_cast<uae_u64>(x_get_long(extra)) << 32;
 			fake_crp_030 |= x_get_long(extra + 4);
 		}
 		break;
@@ -1563,8 +1560,7 @@ void mmu_op(uae_u32 opcode, uae_u32 extra)
 
 static void do_trace(void)
 {
-	if (regs.t0 && currprefs.cpu_model >= 68020)
-	{
+  if (regs.t0 && !regs.t1 && currprefs.cpu_model >= 68020) {
 		// this is obsolete
 		return;
 	}
@@ -1600,9 +1596,9 @@ static void check_uae_int_request(void)
 	}
 }
 
-void cpu_sleep_millis(int ms)
+int cpu_sleep_millis(int ms)
 {
-	sleep_millis_main(ms);
+	return sleep_millis_main(ms);
 }
 
 static bool haltloop(void)
@@ -1664,6 +1660,7 @@ static int do_specialties(int cycles)
 		/* exit from HRTMon? */
 		if (hrtmon_flag == ACTION_REPLAY_ACTIVE && !isinhrt)
 			hrtmon_hide();
+		/* HRTMon breakpoint? (not via IRQ7) */
 		if (hrtmon_flag == ACTION_REPLAY_ACTIVATE)
 			hrtmon_enter();
 	}
@@ -1734,10 +1731,6 @@ static int do_specialties(int cycles)
 	while ((regs.spcflags & SPCFLAG_STOP) && !(regs.spcflags & SPCFLAG_BRK))
 	{
 		check_uae_int_request();
-		{
-			if (bsd_int_requested)
-				bsdsock_fake_int_handler();
-		}
 
 		if (!first)
 			x_do_cycles(4 * CYCLE_UNIT);
@@ -1804,8 +1797,7 @@ static void m68k_run_1(void)
 #if defined (CPU_arm) && defined(USE_ARMNEON)
 				// Well not really since pli is ArmV7...
 				/* Load ARM code for next opcode into L2 cache during execute of do_cycles() */
-				__asm__ volatile ("pli [%[radr]]\n\t" \
-					: : [radr] "r" (cpufunctbl[r->opcode]) : );
+				__asm__ volatile ("pli [%[radr]]\n\t":: [radr]"r"(cpufunctbl[r->opcode]):);
 #endif
 				count_instr(r->opcode);
 
@@ -1836,12 +1828,11 @@ static void m68k_run_1(void)
 
 #ifdef JIT  /* Completely different run_2 replacement */
 
-extern uae_u32 jit_exception;
-
-void execute_exception(void)
+void execute_exception(uae_u32 cycles)
 {
-	Exception_cpu(jit_exception);
-	jit_exception = 0;
+	countdown -= cycles;
+	Exception_cpu(regs.jit_exception);
+	regs.jit_exception = 0;
 	cpu_cycles = adjust_cycles(4 * CYCLE_UNIT / 2);
 	do_cycles(cpu_cycles);
 	// after leaving this function, we fall back to execute_normal()
@@ -1891,7 +1882,7 @@ void execute_normal(void)
 		regs.instruction_pc = m68k_getpc();
 		r->opcode = get_diword(0);
 
-		special_mem = DISTRUST_CONSISTENT_MEM;
+		special_mem = 0;
 		pc_hist[blocklen].location = (uae_u16*)r->pc_p;
 
 		cpu_cycles = (*cpufunctbl[r->opcode])(r->opcode);
@@ -1964,8 +1955,7 @@ static void m68k_run_2(void)
 #if defined (CPU_arm) && defined(USE_ARMNEON)
 				// Well not really since pli is ArmV7...
 				/* Load ARM code for next opcode into L2 cache during execute of do_cycles() */
-				__asm__ volatile ("pli [%[radr]]\n\t" \
-					: : [radr] "r" (cpufunctbl[r->opcode]) : );
+				__asm__ volatile ("pli [%[radr]]\n\t"::[radr]"r"(cpufunctbl[r->opcode]):);
 #endif
 				count_instr(r->opcode);
 
@@ -1995,10 +1985,19 @@ static void m68k_run_2(void)
 
 static int in_m68k_go = 0;
 
-static bool cpu_hardreset;
+static bool cpu_hardreset, cpu_keyboardreset;
+
+bool is_hardreset(void)
+{
+	return cpu_hardreset;
+}
+bool is_keyboardreset(void)
+{
+	return  cpu_keyboardreset;
+}
 
 #ifdef USE_JIT_FPU
-static uae_u8 fp_buffer[8 * 8];
+static uae_u8 fp_buffer[9 * 16];
 #endif
 
 void m68k_go(int may_quit)
@@ -2013,8 +2012,12 @@ void m68k_go(int may_quit)
 	}
 
 #ifdef USE_JIT_FPU
-	__asm__ volatile("vstmia %[fp_buffer]!, {d7-d15}"::[fp_buffer] "r" (fp_buffer));
-	//save_host_fp_regs((uae_u8 *)(&fp_buffer[0]));
+#ifdef CPU_AARCH64
+	save_host_fp_regs(fp_buffer);
+#elif defined (CPU_arm)
+	// This caused crashes in RockChip 32-bit platforms unless it was inlined like this
+	__asm__ volatile ("vstmia %[fp_buffer]!, {d7-d15}"::[fp_buffer] "r" (fp_buffer));
+#endif
 #endif
 
 	reset_frame_rate_hack();
@@ -2024,12 +2027,12 @@ void m68k_go(int may_quit)
 	in_m68k_go++;
 	for (;;)
 	{
+		int restored = 0;
 		void (*run_func)(void);
 
 		if (quit_program > 0)
 		{
-			int restored = 0;
-			bool cpu_keyboardreset = quit_program == UAE_RESET_KEYBOARD;
+			cpu_keyboardreset = quit_program == UAE_RESET_KEYBOARD;
 			cpu_hardreset = ((quit_program == UAE_RESET_HARD ? 1 : 0) | hardboot) != 0;
 
 			if (quit_program == UAE_QUIT)
@@ -2082,6 +2085,7 @@ void m68k_go(int may_quit)
 			{
 				uaecptr pc = m68k_getpc();
 				prefs_changed_cpu();
+				custom_cpuchange();
 				build_cpufunctbl();
 				m68k_setpc_normal(pc);
 				fill_prefetch();
@@ -2094,7 +2098,6 @@ void m68k_go(int may_quit)
 				update_68k_cycles();
 			}
 			cpu_prefs_changed_flag = 0;
-			set_speedup_values();
 		}
 
 		set_x_funcs();
@@ -2105,6 +2108,14 @@ void m68k_go(int may_quit)
 		}
 		startup = 0;
 		unset_special(SPCFLAG_MODE_CHANGE);
+
+#ifdef SAVESTATE
+		if (restored)
+		{
+			restored = 0;
+			savestate_restore_final();
+		}
+#endif
 
 		if (!regs.halted)
 		{
@@ -2119,11 +2130,6 @@ void m68k_go(int may_quit)
 		if (regs.halted)
 		{
 			cpu_halt(regs.halted);
-			if (regs.halted < 0)
-			{
-				haltloop();
-				continue;
-			}
 		}
 
 		run_func =
@@ -2146,8 +2152,12 @@ void m68k_go(int may_quit)
 	regs.pc_oldp = nullptr;
 
 #ifdef USE_JIT_FPU
-	__asm__ volatile("vldmia %[fp_buffer]!, {d7-d15}"::[fp_buffer] "r" (fp_buffer));
-	//restore_host_fp_regs(fp_buffer);
+#ifdef CPU_AARCH64
+	restore_host_fp_regs(fp_buffer);
+#elif defined (CPU_arm)
+	// This caused crashes in RockChip platforms unless it was inlined like this
+	__asm__ volatile ("vldmia %[fp_buffer]!, {d7-d15}" ::[fp_buffer] "r"(fp_buffer));
+#endif
 #endif
 
 	in_m68k_go--;
@@ -2232,7 +2242,7 @@ uae_u8* restore_cpu(uae_u8* src)
 	m68k_reset_sr();
 
 	write_log(_T("CPU: %d%s%03d, PC=%08X\n"),
-		model / 1000, flags & 1 ? _T("EC") : _T(""), model % 1000, regs.pc);
+	          model / 1000, flags & 1 ? _T("EC") : _T(""), model % 1000, regs.pc);
 
 	return src;
 }
@@ -2316,7 +2326,7 @@ uae_u8* save_cpu(int* len, uae_u8* dstptr)
 	save_u32(0x80000000 | (currprefs.address_space_24 ? 1 : 0)); /* FLAGS */
 	for (int i = 0; i < 15; i++)
 		save_u32(regs.regs[i]); /* D0-D7 A0-A6 */
-	save_u32(m68k_getpc()); /* PC */
+	save_u32(m68k_getpc ()); /* PC */
 	save_u16(regs.irc); /* prefetch */
 	save_u16(regs.ir); /* instruction prefetch */
 	MakeSR();
@@ -2370,8 +2380,7 @@ uae_u8* save_cpu(int* len, uae_u8* dstptr)
 
 #endif /* SAVESTATE */
 
-static void exception3f(uae_u32 opcode, uaecptr addr, bool writeaccess, bool instructionaccess, bool notinstruction,
-                        uaecptr pc, bool plus2)
+static void exception3f (uae_u32 opcode, uaecptr addr, bool writeaccess, bool instructionaccess, bool notinstruction, uaecptr pc, int size, bool plus2, int fc)
 {
 	if (currprefs.cpu_model >= 68040)
 		addr &= ~1;
@@ -2395,44 +2404,81 @@ static void exception3f(uae_u32 opcode, uaecptr addr, bool writeaccess, bool ins
 	last_fault_for_exception_3 = addr;
 	last_op_for_exception_3 = opcode;
 	last_writeaccess_for_exception_3 = writeaccess;
-	last_instructionaccess_for_exception_3 = instructionaccess;
+	last_fc_for_exception_3 = fc >= 0 ? fc : (instructionaccess ? 2 : 1);
 	last_notinstruction_for_exception_3 = notinstruction;
+	last_size_for_exception_3 = size;
 	Exception(3);
 }
 
-void exception3_notinstruction(uae_u32 opcode, uaecptr addr)
+static void exception3_notinstruction(uae_u32 opcode, uaecptr addr)
 {
-	exception3f(opcode, addr, true, false, true, 0xffffffff, false);
+	exception3f (opcode, addr, true, false, true, 0xffffffff, 1, false, -1);
 }
-
-void exception3_read(uae_u32 opcode, uaecptr addr)
+void exception3_read(uae_u32 opcode, uaecptr addr, int size, int fc)
 {
-	exception3f(opcode, addr, false, false, false, 0xffffffff, false);
+	bool ni = false;
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
+		if (generates_group1_exception(regs.ir) && !(opcode & 0x20000)) {
+			ni = true;
+			fc = -1;
+		}
+		if (opcode & 0x10000)
+			ni = true;
+		opcode = regs.ir;
 }
-
-void exception3_write(uae_u32 opcode, uaecptr addr)
+	exception3f (opcode, addr, false, 0, ni, 0xffffffff, size, false, fc);
+}
+void exception3_write(uae_u32 opcode, uaecptr addr, int size, uae_u32 val, int fc)
 {
-	exception3f(opcode, addr, true, false, false, 0xffffffff, false);
+	bool ni = false;
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
+		if (generates_group1_exception(regs.ir) && !(opcode & 0x20000)) {
+			ni = true;
+			fc = -1;
+		}
+		if (opcode & 0x10000)
+			ni = true;
+		opcode = regs.ir;
 }
-
+	exception3f (opcode, addr, true, 0, ni, 0xffffffff, size, false, fc);
+	regs.write_buffer = val;
+}
 void exception3i(uae_u32 opcode, uaecptr addr)
 {
-	exception3f(opcode, addr, false, true, false, 0xffffffff, true);
+	exception3f (opcode, addr, 0, 1, false, 0xffffffff, 1, true, -1);
 }
-
 void exception3b(uae_u32 opcode, uaecptr addr, bool w, bool i, uaecptr pc)
 {
-	exception3f(opcode, addr, w, i, false, pc, true);
+	exception3f (opcode, addr, w, i, false, pc, 1, true, -1);
+}
+
+void exception2_setup(uaecptr addr, bool read, int size, uae_u32 fc)
+{
+	uae_u32 opcode = last_op_for_exception_3;
+	last_addr_for_exception_3 = m68k_getpc();
+	last_fault_for_exception_3 = addr;
+	last_writeaccess_for_exception_3 = read == 0;
+	last_fc_for_exception_3 = fc;
+	last_op_for_exception_3 = regs.opcode;
+	last_notinstruction_for_exception_3 = exception_in_exception != 0;
+	last_size_for_exception_3 = size;
+	last_di_for_exception_3 = 1;
+
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible) {
+		if (generates_group1_exception(regs.ir) && !(opcode & 0x20000)) {
+			last_notinstruction_for_exception_3 = true;
+			fc = -1;
+		}
+		if (opcode & 0x10000)
+			last_notinstruction_for_exception_3 = true;
+		if (!(opcode & 0x20000))
+			last_op_for_exception_3 = regs.ir;
+	}
 }
 
 void exception2(uaecptr addr, bool read, int size, uae_u32 fc)
 {
-	last_addr_for_exception_3 = m68k_getpc();
-	last_fault_for_exception_3 = addr;
-	last_writeaccess_for_exception_3 = read == 0;
-	last_instructionaccess_for_exception_3 = (fc & 1) == 0;
-	last_op_for_exception_3 = regs.opcode;
-	last_notinstruction_for_exception_3 = exception_in_exception != 0;
+	exception2_setup(addr, read, size == 1 ? 0 : (size == 2 ? 1 : 2), fc);
 	THROW(2);
 }
 
@@ -2444,7 +2490,9 @@ void cpureset(void)
 	uae_u16 ins;
 	addrbank* ab;
 
+	maybe_disable_fpu();
 	set_special(SPCFLAG_CHECK);
+	send_internalevent(INTERNALEVENT_CPURESET);
 	if (currprefs.cpu_compatible && currprefs.cpu_model <= 68020)
 	{
 		custom_reset(false, false);
@@ -2503,8 +2551,7 @@ void m68k_resumestopped(void)
 
 void check_t0_trace(void)
 {
-	if (regs.t0 && currprefs.cpu_model >= 68020)
-	{
+	if (regs.t0 && !regs.t1 && currprefs.cpu_model >= 68020) {
 		unset_special(SPCFLAG_TRACE);
 		set_special(SPCFLAG_DOTRACE);
 	}

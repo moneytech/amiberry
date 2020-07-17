@@ -2,24 +2,17 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
 
 #include "sysdeps.h"
 #include "config.h"
 #include "gui_handling.h"
 
-#ifdef ANDROIDSDL
+#ifdef ANDROID
 #include "androidsdl_event.h"
 #endif
 
@@ -52,10 +45,6 @@ public:
 };
 
 static ShowMessageActionListener* showMessageActionListener;
-
-#ifdef ANDROIDSDL
-#include "androidsdl_event.h"
-#endif
 
 static void InitShowMessage()
 {
@@ -97,7 +86,6 @@ static void InitShowMessage()
 	wndShowMessage->requestModalFocus();
 }
 
-
 static void ExitShowMessage()
 {
 	wndShowMessage->releaseModalFocus();
@@ -115,57 +103,51 @@ static void ExitShowMessage()
 
 static void ShowMessageWaitInputLoop()
 {
-	FocusBugWorkaround(wndShowMessage);
-
-	while (!dialogFinished)
+	int gotEvent = 0;
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
 	{
-		int gotEvent = 0;
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
+		if (event.type == SDL_KEYDOWN)
 		{
 			gotEvent = 1;
-			if (event.type == SDL_KEYDOWN)
+			switch (event.key.keysym.sym)
 			{
-				switch (event.key.keysym.scancode)
-				{
-				case VK_ESCAPE:
-					dialogFinished = true;
-					break;
+			case VK_ESCAPE:
+				dialogFinished = true;
+				break;
 
-				default:
-					dialogControlPressed = SDL_GetKeyName(event.key.keysym.sym);
-					dialogFinished = true;
-					break;
-				}
-			}
-// This only works in SDL2 for now
-#ifdef USE_SDL2
-			if (event.type == SDL_CONTROLLERBUTTONDOWN)
-			{
-				dialogControlPressed = SDL_GameControllerGetStringForButton(SDL_GameControllerButton(event.cbutton.button));
+			default:
+				dialogControlPressed = SDL_GetKeyName(event.key.keysym.sym);
 				dialogFinished = true;
 				break;
 			}
-#endif
-			//-------------------------------------------------
-			// Send event to guisan-controls
-			//-------------------------------------------------
-			gui_input->pushInput(event);
 		}
-		if (gotEvent)
+
+		if (event.type == SDL_CONTROLLERBUTTONDOWN)
 		{
-			// Now we let the Gui object perform its logic.
-			uae_gui->logic();
-			// Now we let the Gui object draw itself.
-			uae_gui->draw();
-#ifdef USE_SDL2
-			SDL_UpdateTexture(gui_texture, nullptr, gui_screen->pixels, gui_screen->pitch);
-#endif
+			gotEvent = 1;
+			dialogControlPressed = SDL_GameControllerGetStringForButton(
+				SDL_GameControllerButton(event.cbutton.button));
+			dialogFinished = true;
+			break;
 		}
-		
-		// Finally we update the screen.
-		UpdateGuiScreen();
+
+		//-------------------------------------------------
+		// Send event to guisan-controls
+		//-------------------------------------------------
+		gui_input->pushInput(event);
 	}
+
+	if (gotEvent)
+	{
+		// Now we let the Gui object perform its logic.
+		uae_gui->logic();
+		// Now we let the Gui object draw itself.
+		uae_gui->draw();
+		// Finally we update the screen.
+		update_gui_screen();
+	}
+
 }
 
 static void navigate_left_right()
@@ -180,93 +162,136 @@ static void navigate_left_right()
 
 static void ShowMessageLoop()
 {
-	FocusBugWorkaround(wndShowMessage);
-
 	int gotEvent = 0;
-	while (!dialogFinished)
+	SDL_Event event;
+	SDL_Event touch_event;
+	while (SDL_PollEvent(&event))
 	{
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
+		switch (event.type)
 		{
+		case SDL_KEYDOWN:
 			gotEvent = 1;
-			if (event.type == SDL_KEYDOWN)
+			switch (event.key.keysym.sym)
 			{
-				switch (event.key.keysym.sym)
-				{
-				case VK_ESCAPE:
-					dialogFinished = true;
-					break;
+			case VK_ESCAPE:
+				dialogFinished = true;
+				break;
 
-				case VK_LEFT:
-				case VK_RIGHT:
-					navigate_left_right();
-					break;
+			case VK_LEFT:
+			case VK_RIGHT:
+				navigate_left_right();
+				break;
 
-				case VK_Blue:
-				case VK_Green:
-				case SDLK_RETURN:
-					event.key.keysym.sym = SDLK_RETURN;
-					gui_input->pushInput(event); // Fire key down
-					event.type = SDL_KEYUP; // and the key up
-					break;
-				default:
-					break;
-				}
-			}
-			else if (event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYHATMOTION)
-			{
-				if (GUIjoy)
-				{
-					const int hat = SDL_JoystickGetHat(GUIjoy, 0);
-
-					if (SDL_JoystickGetButton(GUIjoy, host_input_buttons[0].south_button))
-					{
-						PushFakeKey(SDLK_RETURN);
-						break;
-					}
-					if (SDL_JoystickGetButton(GUIjoy, host_input_buttons[0].east_button) ||
-						SDL_JoystickGetButton(GUIjoy, host_input_buttons[0].start_button))
-					{
-						dialogFinished = true;
-						break;
-					}
-					if (SDL_JoystickGetButton(GUIjoy, host_input_buttons[0].dpad_left) ||
-						SDL_JoystickGetButton(GUIjoy, host_input_buttons[0].dpad_right) ||
-						(hat & SDL_HAT_LEFT) ||
-						(hat & SDL_HAT_RIGHT))
-
-					{
-						navigate_left_right();
-						break;
-					}
-				}
+			case VK_Blue:
+			case VK_Green:
+			case SDLK_RETURN:
+				event.key.keysym.sym = SDLK_RETURN;
+				gui_input->pushInput(event); // Fire key down
+				event.type = SDL_KEYUP; // and the key up
+				break;
+			default:
 				break;
 			}
+			break;
 
-			//-------------------------------------------------
-			// Send event to guisan-controls
-			//-------------------------------------------------
-#ifdef ANDROIDSDL
-			androidsdl_event(event, gui_input);
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYHATMOTION:
+			if (gui_joystick)
+			{
+				gotEvent = 1;
+				const int hat = SDL_JoystickGetHat(gui_joystick, 0);
+
+				if (SDL_JoystickGetButton(gui_joystick, host_input_buttons[0].south_button))
+				{
+					PushFakeKey(SDLK_RETURN);
+					break;
+				}
+				if (SDL_JoystickGetButton(gui_joystick, host_input_buttons[0].east_button) ||
+					SDL_JoystickGetButton(gui_joystick, host_input_buttons[0].start_button))
+				{
+					dialogFinished = true;
+					break;
+				}
+				if (SDL_JoystickGetButton(gui_joystick, host_input_buttons[0].dpad_left) ||
+					SDL_JoystickGetButton(gui_joystick, host_input_buttons[0].dpad_right) ||
+					(hat & SDL_HAT_LEFT) ||
+					(hat & SDL_HAT_RIGHT))
+
+				{
+					navigate_left_right();
+					break;
+				}
+			}
+			break;
+
+		case SDL_FINGERDOWN:
+			gotEvent = 1;
+			memcpy(&touch_event, &event, sizeof event);
+			touch_event.type = SDL_MOUSEBUTTONDOWN;
+			touch_event.button.which = 0;
+			touch_event.button.button = SDL_BUTTON_LEFT;
+			touch_event.button.state = SDL_PRESSED;
+			touch_event.button.x = gui_graphics->getTarget()->w * event.tfinger.x;
+			touch_event.button.y = gui_graphics->getTarget()->h * event.tfinger.y;
+			gui_input->pushInput(touch_event);
+			break;
+
+		case SDL_FINGERUP:
+			gotEvent = 1;
+			memcpy(&touch_event, &event, sizeof event);
+			touch_event.type = SDL_MOUSEBUTTONUP;
+			touch_event.button.which = 0;
+			touch_event.button.button = SDL_BUTTON_LEFT;
+			touch_event.button.state = SDL_RELEASED;
+			touch_event.button.x = gui_graphics->getTarget()->w * event.tfinger.x;
+			touch_event.button.y = gui_graphics->getTarget()->h * event.tfinger.y;
+			gui_input->pushInput(touch_event);
+			break;
+
+		case SDL_FINGERMOTION:
+			gotEvent = 1;
+			memcpy(&touch_event, &event, sizeof event);
+			touch_event.type = SDL_MOUSEMOTION;
+			touch_event.motion.which = 0;
+			touch_event.motion.state = 0;
+			touch_event.motion.x = gui_graphics->getTarget()->w * event.tfinger.x;
+			touch_event.motion.y = gui_graphics->getTarget()->h * event.tfinger.y;
+			gui_input->pushInput(touch_event);
+			break;
+
+		case SDL_KEYUP:
+		case SDL_JOYBUTTONUP:
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+		case SDL_MOUSEMOTION:
+		case SDL_MOUSEWHEEL:
+			gotEvent = 1;
+			break;
+
+		default:
+			break;
+		}
+
+		//-------------------------------------------------
+		// Send event to guisan-controls
+		//-------------------------------------------------
+#ifdef ANDROID
+		androidsdl_event(event, gui_input);
 #else
-			gui_input->pushInput(event);
+		gui_input->pushInput(event);
 #endif
-		}
-		if (gotEvent)
-		{
-			// Now we let the Gui object perform its logic.
-			uae_gui->logic();
-			// Now we let the Gui object draw itself.
-			uae_gui->draw();
-#ifdef USE_SDL2
-			SDL_UpdateTexture(gui_texture, nullptr, gui_screen->pixels, gui_screen->pitch);
-#endif
-		}
+	}
+
+	if (gotEvent)
+	{
+		// Now we let the Gui object perform its logic.
+		uae_gui->logic();
+		// Now we let the Gui object draw itself.
+		uae_gui->draw();
 		// Finally we update the screen.
-		UpdateGuiScreen();
+		update_gui_screen();
 	}
 }
-
 
 bool ShowMessage(const char* title, const char* line1, const char* line2, const char* button1, const char* button2)
 {
@@ -290,12 +315,14 @@ bool ShowMessage(const char* title, const char* line1, const char* line2, const 
 	// Prepare the screen once
 	uae_gui->logic();
 	uae_gui->draw();
-#ifdef USE_SDL2
-	SDL_UpdateTexture(gui_texture, nullptr, gui_screen->pixels, gui_screen->pitch);
-#endif
-	UpdateGuiScreen();
+	update_gui_screen();
 
-	ShowMessageLoop();
+	while (!dialogFinished)
+	{
+		const auto start = SDL_GetPerformanceCounter();
+		ShowMessageLoop();
+		cap_fps(start, 60);
+	}
 
 	ExitShowMessage();
 
@@ -316,12 +343,14 @@ const char* ShowMessageForInput(const char* title, const char* line1, const char
 	// Prepare the screen once
 	uae_gui->logic();
 	uae_gui->draw();
-#ifdef USE_SDL2
-	SDL_UpdateTexture(gui_texture, nullptr, gui_screen->pixels, gui_screen->pitch);
-#endif
-	UpdateGuiScreen();
+	update_gui_screen();
 
-	ShowMessageWaitInputLoop();
+	while (!dialogFinished)
+	{
+		const auto start = SDL_GetPerformanceCounter();
+		ShowMessageWaitInputLoop();
+		cap_fps(start, 60);
+	}
 
 	ExitShowMessage();
 

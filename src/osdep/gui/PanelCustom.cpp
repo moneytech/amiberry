@@ -2,21 +2,11 @@
 #include <string.h>
 #include <stdbool.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeRadioButton.hpp"
-#include "UaeDropDown.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
@@ -24,25 +14,25 @@
 #include "inputdevice.h"
 
 static gcn::Window* grpPort;
-static gcn::UaeRadioButton* optPort0;
-static gcn::UaeRadioButton* optPort1;
-static gcn::UaeRadioButton* optPort2;
-static gcn::UaeRadioButton* optPort3;
+static gcn::RadioButton* optPort0;
+static gcn::RadioButton* optPort1;
+static gcn::RadioButton* optPort2;
+static gcn::RadioButton* optPort3;
 
 static gcn::Window* grpFunction;
-static gcn::UaeRadioButton* optMultiNone;
-static gcn::UaeRadioButton* optMultiSelect;
-static gcn::UaeRadioButton* optMultiLeft;
-static gcn::UaeRadioButton* optMultiRight;
+static gcn::RadioButton* optMultiNone;
+static gcn::RadioButton* optMultiSelect;
+//static gcn::RadioButton* optMultiLeft;
+//static gcn::RadioButton* optMultiRight;
 
 static gcn::Label* lblCustomAction[14];
-static gcn::UaeDropDown* cboCustomAction[14];
+static gcn::DropDown* cboCustomAction[14];
 
 static gcn::Label* lblPortInput;
 static gcn::TextField* txtPortInput;
 static gcn::Label* lblRetroarch;
 
-static gcn::UaeCheckBox* chkAnalogRemap;
+static gcn::CheckBox* chkAnalogRemap;
 
 static int SelectedPort = 1;
 static int SelectedFunction = 0;
@@ -51,7 +41,7 @@ static int SelectedFunction = 0;
 class StringListModel : public gcn::ListModel
 {
 private:
-	vector<string> values;
+	std::vector<std::string> values;
 public:
 	StringListModel(const char* entries[], const int count)
 	{
@@ -77,9 +67,9 @@ public:
 		return 0;
 	}
 
-	string getElementAt(int i) override
+	std::string getElementAt(int i) override
 	{
-		if (i < 0 || i >= values.size())
+		if (i < 0 || i >= static_cast<int>(values.size()))
 			return "---";
 		return values[i];
 	}
@@ -160,49 +150,31 @@ public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
 		if (actionEvent.getSource() == optPort0)
-		{
 			SelectedPort = 0;
-		}
 		else if (actionEvent.getSource() == optPort1)
-		{
 			SelectedPort = 1;
-		}
 		else if (actionEvent.getSource() == optPort2)
-		{
 			SelectedPort = 2;
-		}
 		else if (actionEvent.getSource() == optPort3)
-		{
 			SelectedPort = 3;
-		}
 
 		else if (actionEvent.getSource() == optMultiNone)
-		{
 			SelectedFunction = 0;
-		}
 		else if (actionEvent.getSource() == optMultiSelect)
-		{
 			SelectedFunction = 1;
-		}
-		else if (actionEvent.getSource() == optMultiLeft)
-		{
-			SelectedFunction = 2;
-		}
-		else if (actionEvent.getSource() == optMultiRight)
-		{
-			SelectedFunction = 3;
-		}
+		//else if (actionEvent.getSource() == optMultiLeft)
+			//SelectedFunction = 2;
+		//else if (actionEvent.getSource() == optMultiRight)
+			//SelectedFunction = 3;
 
-                
-                else if (actionEvent.getSource() == chkAnalogRemap)
-                        changed_prefs.input_analog_remap = chkAnalogRemap->isSelected();
-                        
+		else if (actionEvent.getSource() == chkAnalogRemap)
+			changed_prefs.input_analog_remap = chkAnalogRemap->isSelected();
+
 		RefreshPanelCustom();
 	}
 };
 
 static GroupActionListener* grpActionListener;
-
 
 class CustomActionListener : public gcn::ActionListener
 {
@@ -222,13 +194,13 @@ public:
 			case 1:
 				tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_hotkey;
 				break;
-			case 2:
-				tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger;
-				break;
-			case 3:
-				tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger;
-				break;
-			default: 
+			//case 2:
+				//tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger;
+				//break;
+			//case 3:
+				//tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger;
+				//break;
+			default:
 				break;
 			}
 
@@ -311,7 +283,7 @@ public:
 			}
 
 
-			// push map back into changed_pre
+			// push map back into changed_prefs
 			switch (SelectedFunction)
 			{
 			case 0:
@@ -320,16 +292,15 @@ public:
 			case 1:
 				changed_prefs.jports[SelectedPort].amiberry_custom_hotkey = tempmap;
 				break;
-			case 2:
-				changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger = tempmap;
-				break;
-			case 3:
-				changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger = tempmap;
-				break;
-			default: 
+			//case 2:
+				//changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger = tempmap;
+				//break;
+			//case 3:
+				//changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger = tempmap;
+				//break;
+			default:
 				break;
 			}
-
 
 			// and here, we will scroll through the custom-map and 
 			// push it into the currprefs config file
@@ -354,7 +325,7 @@ void InitPanelCustom(const struct _ConfigCategory& category)
 
 		for (auto idx : RemapEventList)
 		{
-			const auto ie = inputdevice_get_eventinfo(idx);
+			const auto* const ie = inputdevice_get_eventinfo(idx);
 			snprintf(tmp, 255, "%s", ie->name);
 			CustomEventList.AddElement(tmp);
 		}
@@ -373,47 +344,57 @@ void InitPanelCustom(const struct _ConfigCategory& category)
 	customActionListener = new CustomActionListener();
 	grpActionListener = new GroupActionListener();
 
-	optPort0 = new gcn::UaeRadioButton("0: Mouse", "radioportgroup");
+	optPort0 = new gcn::RadioButton("0: Mouse", "radioportgroup");
+	optPort0->setId("0: Mouse");
 	optPort0->addActionListener(grpActionListener);
-	optPort1 = new gcn::UaeRadioButton("1: Joystick", "radioportgroup");
+	optPort1 = new gcn::RadioButton("1: Joystick", "radioportgroup");
+	optPort1->setId("1: Joystick");
 	optPort1->addActionListener(grpActionListener);
-	optPort2 = new gcn::UaeRadioButton("2: Parallel 1", "radioportgroup");
+	optPort2 = new gcn::RadioButton("2: Parallel 1", "radioportgroup");
+	optPort2->setId("2: Parallel 1");
 	optPort2->addActionListener(grpActionListener);
-	optPort3 = new gcn::UaeRadioButton("3: Parallel 2", "radioportgroup");
+	optPort3 = new gcn::RadioButton("3: Parallel 2", "radioportgroup");
+	optPort3->setId("3: Parallel 2");
 	optPort3->addActionListener(grpActionListener);
 
-	optMultiNone = new gcn::UaeRadioButton("None", "radiomultigroup");
+	optMultiNone = new gcn::RadioButton("None", "radiomultigroup");
+	optMultiNone->setId("None");
 	optMultiNone->addActionListener(grpActionListener);
-	optMultiSelect = new gcn::UaeRadioButton("HotKey", "radiomultigroup");
+	optMultiSelect = new gcn::RadioButton("HotKey", "radiomultigroup");
+	optMultiSelect->setId("HotKey");
 	optMultiSelect->addActionListener(grpActionListener);
-	//	optMultiLeft = new gcn::UaeRadioButton("Left Trigger", "radiomultigroup");
+	//	optMultiLeft = new gcn::RadioButton("Left Trigger", "radiomultigroup");
+	//	optMultiLeft->setId("Left Trigger");
 	//	optMultiLeft->addActionListener(grpActionListener);
-	//	optMultiRight = new gcn::UaeRadioButton("Right Trigger", "radiomultigroup");
+	//	optMultiRight = new gcn::RadioButton("Right Trigger", "radiomultigroup");
+	//	optMultiRight->setId("Right Trigger");
 	//	optMultiRight->addActionListener(grpActionListener);
 
-	chkAnalogRemap = new gcn::UaeCheckBox("Remap DPad to left axis");
+	chkAnalogRemap = new gcn::CheckBox("Remap DPad to left axis");
 	chkAnalogRemap->setId("chkAnalogRemap");
 	chkAnalogRemap->addActionListener(grpActionListener);
-        chkAnalogRemap->setEnabled(true);
-        
+	chkAnalogRemap->setEnabled(true);
+
 	grpPort = new gcn::Window("Joystick Port");
 	grpPort->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
-	grpPort->add(optPort0, 10, 5);
-	grpPort->add(optPort1, 150, 5);
-	grpPort->add(optPort2, 290, 5);
-	grpPort->add(optPort3, 430, 5);
-	grpPort->setSize(580, 50);
+	grpPort->add(optPort0, 10, 10);
+	grpPort->add(optPort1, optPort0->getX() + optPort0->getWidth() + DISTANCE_NEXT_X, optPort0->getY());
+	grpPort->add(optPort2, optPort1->getX() + optPort1->getWidth() + DISTANCE_NEXT_X, optPort0->getY());
+	grpPort->add(optPort3, optPort2->getX() + optPort2->getWidth() + DISTANCE_NEXT_X, optPort0->getY());
+	grpPort->setSize(category.panel->getWidth() - DISTANCE_BORDER * 2, TITLEBAR_HEIGHT + optPort0->getHeight() * 3);
+	grpPort->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpPort->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpPort);
 
 	grpFunction = new gcn::Window("Function Key");
-	grpFunction->setPosition(DISTANCE_BORDER, 75);
-	grpFunction->add(optMultiNone, 10, 5);
-	grpFunction->add(optMultiSelect, 150, 5);
+	grpFunction->setPosition(DISTANCE_BORDER, grpPort->getY() + grpPort->getHeight() + DISTANCE_NEXT_Y);
+	grpFunction->add(optMultiNone, 10, 10);
+	grpFunction->add(optMultiSelect, optMultiNone->getX() + optMultiNone->getWidth() + DISTANCE_NEXT_X, optMultiNone->getY());
 	//	grpFunction->add(optMultiLeft,   290, 5);
 	//	grpFunction->add(optMultiRight,  430, 5);
-	grpFunction->setSize(580, 50);
+	grpFunction->setSize(grpPort->getWidth(), grpPort->getHeight());
+	grpFunction->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpFunction->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpFunction);
@@ -430,7 +411,9 @@ void InitPanelCustom(const struct _ConfigCategory& category)
 	lblRetroarch = new gcn::Label("[-]");
 	lblRetroarch->setAlignment(gcn::Graphics::LEFT);
 
-	txtPortInput->setSize(grpFunction->getWidth() - (lblPortInput->getWidth() + DISTANCE_NEXT_X * 2 + lblRetroarch->getWidth()), TEXTFIELD_HEIGHT);
+	txtPortInput->setSize(
+		grpFunction->getWidth() - (lblPortInput->getWidth() + DISTANCE_NEXT_X * 2 + lblRetroarch->getWidth()),
+		TEXTFIELD_HEIGHT);
 
 	lblCustomAction[0] = new gcn::Label("DPad Up:");
 	lblCustomAction[1] = new gcn::Label("DPad Down:");
@@ -453,8 +436,8 @@ void InitPanelCustom(const struct _ConfigCategory& category)
 		lblCustomAction[i]->setSize(lblCustomAction[12]->getWidth(), lblCustomAction[12]->getHeight());
 		lblCustomAction[i]->setAlignment(gcn::Graphics::RIGHT);
 
-		cboCustomAction[i] = new gcn::UaeDropDown(&CustomEventList);
-		cboCustomAction[i]->setSize(cboCustomAction[i]->getWidth()*2, cboCustomAction[i]->getHeight());
+		cboCustomAction[i] = new gcn::DropDown(&CustomEventList);
+		cboCustomAction[i]->setSize(cboCustomAction[i]->getWidth() * 2, cboCustomAction[i]->getHeight());
 		cboCustomAction[i]->setBaseColor(gui_baseCol);
 		cboCustomAction[i]->setBackgroundColor(colTextboxBackground);
 
@@ -463,29 +446,29 @@ void InitPanelCustom(const struct _ConfigCategory& category)
 		cboCustomAction[i]->addActionListener(customActionListener);
 	}
 
-	auto posY = 144 + 40;
+	auto posY = grpFunction->getY() + grpFunction->getHeight() + DISTANCE_NEXT_Y;
+	category.panel->add(lblPortInput, DISTANCE_BORDER, posY);
+	category.panel->add(txtPortInput, lblPortInput->getX() + lblPortInput->getWidth() + DISTANCE_NEXT_X, posY);
+	category.panel->add(lblRetroarch, txtPortInput->getX() + txtPortInput->getWidth() + DISTANCE_NEXT_X, posY);
+	posY = txtPortInput->getY() + txtPortInput->getHeight() + DISTANCE_NEXT_Y * 2;
+	
 	for (i = 0; i < 7; ++i)
 	{
-		category.panel->add(lblCustomAction[i], DISTANCE_BORDER/2, posY);
-		category.panel->add(cboCustomAction[i], DISTANCE_BORDER/2 + lblCustomAction[i]->getWidth() + 4, posY);
+		category.panel->add(lblCustomAction[i], DISTANCE_BORDER / 2, posY);
+		category.panel->add(cboCustomAction[i], DISTANCE_BORDER / 2 + lblCustomAction[i]->getWidth() + 4, posY);
 		posY = posY + DROPDOWN_HEIGHT + 6;
 	}
 
-
-	posY = 144 + 40;
+	posY = txtPortInput->getY() + txtPortInput->getHeight() + DISTANCE_NEXT_Y * 2;
 	for (i = 7; i < 14; ++i)
 	{
 		category.panel->add(lblCustomAction[i], DISTANCE_BORDER + 290, posY);
 		category.panel->add(cboCustomAction[i], DISTANCE_BORDER + lblCustomAction[i]->getWidth() + 290 + 4, posY);
 		posY = posY + DROPDOWN_HEIGHT + 6;
 	}
-        
-        category.panel->add(chkAnalogRemap, DISTANCE_BORDER + lblCustomAction[0]->getWidth(), posY);
-	posY += chkAnalogRemap->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblPortInput, DISTANCE_BORDER, 144);
-	category.panel->add(txtPortInput, lblPortInput->getX() + lblPortInput->getWidth() + DISTANCE_NEXT_X, 144);
-	category.panel->add(lblRetroarch, txtPortInput->getX() + txtPortInput->getWidth() + DISTANCE_NEXT_X, 144);
+	category.panel->add(chkAnalogRemap, DISTANCE_BORDER + lblCustomAction[0]->getWidth(), posY);
+	posY += chkAnalogRemap->getHeight() + DISTANCE_NEXT_Y;
 
 	// optMultiLeft->setEnabled(false);
 	// optMultiRight->setEnabled(false);
@@ -504,17 +487,16 @@ void ExitPanelCustom()
 
 	delete optMultiNone;
 	delete optMultiSelect;
-	delete optMultiLeft;
-	delete optMultiRight;
+	//delete optMultiLeft;
+	//delete optMultiRight;
 	delete grpFunction;
-        delete chkAnalogRemap;
+	delete chkAnalogRemap;
 
-	for (auto & i : lblCustomAction)
-	{
+	for (auto& i : lblCustomAction)
 		delete i;
-		//        delete cboCustomAction[i];                   
-	}
 
+	for (auto& i : cboCustomAction)
+		delete i;
 
 	delete lblPortInput;
 	delete txtPortInput;
@@ -535,10 +517,10 @@ void RefreshPanelCustom(void)
 	optMultiNone->setSelected(SelectedFunction == 0);
 	optMultiSelect->setSelected(SelectedFunction == 1);
 	// optMultiLeft->setSelected(SelectedFunction == 2);
-	//  optMultiRight->setSelected(SelectedFunction == 3);
+	// optMultiRight->setSelected(SelectedFunction == 3);
 
 	chkAnalogRemap->setSelected(changed_prefs.input_analog_remap);
-        
+
 	// you'll want to refresh the drop-down section here
 	// get map
 	struct joypad_map_layout tempmap;
@@ -550,13 +532,13 @@ void RefreshPanelCustom(void)
 	case 1:
 		tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_hotkey;
 		break;
-	case 2:
-		tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger;
-		break;
-	case 3:
-		tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger;
-		break;
-	default: 
+	//case 2:
+		//tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_left_trigger;
+		//break;
+	//case 3:
+		//tempmap = changed_prefs.jports[SelectedPort].amiberry_custom_right_trigger;
+		//break;
+	default:
 		break;
 	}
 
@@ -564,19 +546,15 @@ void RefreshPanelCustom(void)
 	// update the joystick port  , and disable those which are not available
 	char tmp[255];
 
-	if (changed_prefs.jports[SelectedPort].id > JSEM_JOYS && changed_prefs.jports[SelectedPort].id < JSEM_MICE - 1)
+	if (changed_prefs.jports[SelectedPort].id >= JSEM_JOYS + num_keys_as_joys 
+		&& changed_prefs.jports[SelectedPort].id < JSEM_MICE - 1)
 	{
-		const auto hostjoyid = changed_prefs.jports[SelectedPort].id - JSEM_JOYS - 1;
-#ifdef USE_SDL1
-		strncpy(tmp, SDL_JoystickName(hostjoyid), 255);
-#elif USE_SDL2
+		const auto hostjoyid = changed_prefs.jports[SelectedPort].id - JSEM_JOYS - num_keys_as_joys;
 		strncpy(tmp, SDL_JoystickNameForIndex(hostjoyid), 255);
-#endif
 
 		for (auto n = 0; n < 14; ++n)
 		{
 			auto temp_button = 0;
-
 			switch (n)
 			{
 			case 0:
@@ -649,43 +627,55 @@ void RefreshPanelCustom(void)
 					temp_button = host_input_buttons[hostjoyid].rstick_button;
 					break;
 				}
-			default: 
+			default:
 				break;
 			}
 
 			// disable unmapped buttons
-			cboCustomAction[n]->setEnabled((temp_button + 1) != 0);
+			cboCustomAction[n]->setEnabled(temp_button + 1 != 0);
+			lblCustomAction[n]->setEnabled(temp_button + 1 != 0);
 
 			// set hotkey/quit/reset/menu on NONE field (and disable hotkey)
-			if (temp_button == host_input_buttons[hostjoyid].hotkey_button && temp_button != -1)
+			if (temp_button == host_input_buttons[hostjoyid].hotkey_button
+				&& temp_button != -1)
 			{
 				cboCustomAction[n]->setListModel(&CustomEventList_HotKey);
+				//cboCustomAction[n]->setSelected(0);
 				cboCustomAction[n]->setEnabled(false);
-				cboCustomAction[n]->setSelected(0);
+				lblCustomAction[n]->setEnabled(false);
 			}
 
-			else if (temp_button == host_input_buttons[hostjoyid].quit_button && temp_button != -1 && SelectedFunction == 1 &&
-				changed_prefs.use_retroarch_quit)
+			else if (temp_button == host_input_buttons[hostjoyid].quit_button
+				&& temp_button != -1
+				&& SelectedFunction == 1
+				&& changed_prefs.use_retroarch_quit)
 			{
 				cboCustomAction[n]->setListModel(&CustomEventList_Quit);
+				//cboCustomAction[n]->setSelected(0);
 				cboCustomAction[n]->setEnabled(false);
-				cboCustomAction[n]->setSelected(0);
+				lblCustomAction[n]->setEnabled(false);
 			}
 
-			else if (temp_button == host_input_buttons[hostjoyid].menu_button && temp_button != -1 && SelectedFunction == 1 &&
-				changed_prefs.use_retroarch_menu)
+			else if (temp_button == host_input_buttons[hostjoyid].menu_button
+				&& temp_button != -1
+				&& SelectedFunction == 1
+				&& changed_prefs.use_retroarch_menu)
 			{
 				cboCustomAction[n]->setListModel(&CustomEventList_Menu);
+				//cboCustomAction[n]->setSelected(0);
 				cboCustomAction[n]->setEnabled(false);
-				cboCustomAction[n]->setSelected(0);
+				lblCustomAction[n]->setEnabled(false);
 			}
 
-			else if (temp_button == host_input_buttons[hostjoyid].reset_button && temp_button != -1 && SelectedFunction == 1 &&
-				changed_prefs.use_retroarch_reset)
+			else if (temp_button == host_input_buttons[hostjoyid].reset_button
+				&& temp_button != -1
+				&& SelectedFunction == 1
+				&& changed_prefs.use_retroarch_reset)
 			{
 				cboCustomAction[n]->setListModel(&CustomEventList_Reset);
+				//cboCustomAction[n]->setSelected(0);
 				cboCustomAction[n]->setEnabled(false);
-				cboCustomAction[n]->setSelected(0);
+				lblCustomAction[n]->setEnabled(false);
 			}
 
 			else
@@ -696,10 +686,15 @@ void RefreshPanelCustom(void)
 
 		if (host_input_buttons[hostjoyid].number_of_hats > 0 || changed_prefs.input_analog_remap == true)
 		{
-			cboCustomAction[ 0]->setEnabled(true);
-			cboCustomAction[ 1]->setEnabled(true);
-			cboCustomAction[ 2]->setEnabled(true);
-			cboCustomAction[ 3]->setEnabled(true);
+			cboCustomAction[0]->setEnabled(true);
+			cboCustomAction[1]->setEnabled(true);
+			cboCustomAction[2]->setEnabled(true);
+			cboCustomAction[3]->setEnabled(true);
+
+			lblCustomAction[0]->setEnabled(true);
+			lblCustomAction[1]->setEnabled(true);
+			lblCustomAction[2]->setEnabled(true);
+			lblCustomAction[3]->setEnabled(true);
 		}
 
 		if (host_input_buttons[hostjoyid].is_retroarch)
@@ -711,9 +706,13 @@ void RefreshPanelCustom(void)
 	else
 	{
 		_stprintf(tmp, _T("%s"), "Not a valid Input Controller for Joystick Emulation.");
-		for (auto & n : cboCustomAction)
+		for (auto& n : cboCustomAction)
 		{
 			n->setListModel(&CustomEventList);
+			n->setEnabled(false);
+		}
+		for (auto& n : lblCustomAction)
+		{
 			n->setEnabled(false);
 		}
 
@@ -800,34 +799,31 @@ void RefreshPanelCustom(void)
 				eventnum = tempmap.rstick_select_action;
 				break;
 			}
-		default: 
+		default:
 			break;
 		}
 		const auto x = find_in_array(RemapEventList, RemapEventListSize, eventnum);
-		if (cboCustomAction[z]->getEnabled())
-		{
-			cboCustomAction[z]->setSelected(x + 1);
-		}
+		cboCustomAction[z]->setSelected(x + 1);
 	}
 }
 
 
-bool HelpPanelCustom(vector<string>& helptext)
+bool HelpPanelCustom(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("Set up Custom input actions for each Amiga port, such as Keyboard remapping,");
 	helptext.emplace_back("or emulator functions.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("Select the port which you wish to re-map with 'Joystick Port'.");
 	helptext.emplace_back("The currently selected Input Device will then be displayed under 'Input Device'.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("Buttons which are not available on this device (detected with RetroArch ");
 	helptext.emplace_back("configuration files) are unavailable to remap.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("The HotKey button (used for secondary functions) is also unavailable for custom options. ");
 	helptext.emplace_back("The actions performed by pressing the HotKey with other buttons can also be remapped.");
 	helptext.emplace_back("Pre-defined functions such as Quit/Reset/Menu will be displayed as the 'default' option.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("The Function of the individual buttons are selectable via the marked drop-down boxes.");
 	return true;
 }

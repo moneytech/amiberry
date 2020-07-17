@@ -1,48 +1,40 @@
 #include <stdbool.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeRadioButton.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
-#include "include/memory.h"
+#include "memory.h"
 #include "newcpu.h"
 #include "gui_handling.h"
 
 static gcn::Window* grpCPU;
-static gcn::UaeRadioButton* optCPU68000;
-static gcn::UaeRadioButton* optCPU68010;
-static gcn::UaeRadioButton* optCPU68020;
-static gcn::UaeRadioButton* optCPU68030;
-static gcn::UaeRadioButton* optCPU68040;
-static gcn::UaeCheckBox* chk24Bit;
-static gcn::UaeCheckBox* chkCPUCompatible;
-static gcn::UaeCheckBox* chkJIT;
+static gcn::RadioButton* optCPU68000;
+static gcn::RadioButton* optCPU68010;
+static gcn::RadioButton* optCPU68020;
+static gcn::RadioButton* optCPU68030;
+static gcn::RadioButton* optCPU68040;
+static gcn::CheckBox* chk24Bit;
+static gcn::CheckBox* chkCPUCompatible;
+static gcn::CheckBox* chkJIT;
 static gcn::Window* grpFPU;
-static gcn::UaeRadioButton* optFPUnone;
-static gcn::UaeRadioButton* optFPU68881;
-static gcn::UaeRadioButton* optFPU68882;
-static gcn::UaeRadioButton* optFPUinternal;
-static gcn::UaeCheckBox* chkFPUstrict;
-static gcn::UaeCheckBox* chkFPUJIT;
+static gcn::RadioButton* optFPUnone;
+static gcn::RadioButton* optFPU68881;
+static gcn::RadioButton* optFPU68882;
+static gcn::RadioButton* optFPUinternal;
+static gcn::CheckBox* chkFPUstrict;
+static gcn::CheckBox* chkFPUJIT;
 static gcn::Window* grpCPUSpeed;
-static gcn::UaeRadioButton* opt7Mhz;
-static gcn::UaeRadioButton* opt14Mhz;
-static gcn::UaeRadioButton* opt28Mhz;
-static gcn::UaeRadioButton* optFastest;
-static gcn::UaeRadioButton* optTurbo;
+static gcn::RadioButton* opt7Mhz;
+static gcn::RadioButton* opt14Mhz;
+static gcn::RadioButton* opt25Mhz;
+static gcn::RadioButton* optFastest;
+static gcn::Label* lblCpuIdle;
+static gcn::Slider* sldCpuIdle;
 
 class CPUButtonActionListener : public gcn::ActionListener
 {
@@ -74,7 +66,6 @@ public:
 			changed_prefs.cpu_model = 68020;
 			if (changed_prefs.fpu_model == 68040)
 				changed_prefs.fpu_model = 68881;
-			changed_prefs.cpu_compatible = false;
 		}
 		else if (actionEvent.getSource() == optCPU68030)
 		{
@@ -82,14 +73,12 @@ public:
 			if (changed_prefs.fpu_model == 68040)
 				changed_prefs.fpu_model = 68881;
 			changed_prefs.address_space_24 = false;
-			changed_prefs.cpu_compatible = false;
 		}
 		else if (actionEvent.getSource() == optCPU68040)
 		{
 			changed_prefs.cpu_model = 68040;
 			changed_prefs.fpu_model = 68040;
 			changed_prefs.address_space_24 = false;
-			changed_prefs.cpu_compatible = false;
 		}
 		RefreshPanelCPU();
 		RefreshPanelRAM();
@@ -136,12 +125,10 @@ public:
 			changed_prefs.m68k_speed = M68K_SPEED_7MHZ_CYCLES;
 		else if (actionEvent.getSource() == opt14Mhz)
 			changed_prefs.m68k_speed = M68K_SPEED_14MHZ_CYCLES;
-		else if (actionEvent.getSource() == opt28Mhz)
+		else if (actionEvent.getSource() == opt25Mhz)
 			changed_prefs.m68k_speed = M68K_SPEED_25MHZ_CYCLES;
 		else if (actionEvent.getSource() == optFastest)
 			changed_prefs.m68k_speed = -1;
-		else if (actionEvent.getSource() == optTurbo)
-			changed_prefs.m68k_speed = -30;
 	}
 };
 
@@ -155,6 +142,7 @@ public:
 	{
 		changed_prefs.address_space_24 = chk24Bit->isSelected();
 		RefreshPanelCPU();
+		RefreshPanelRAM();
 	}
 };
 
@@ -193,6 +181,10 @@ public:
 				changed_prefs.cpu_compatible = false;
 				changed_prefs.cachesize = MAX_JIT_CACHE;
 				changed_prefs.compfpu = true;
+				changed_prefs.cpu_cycle_exact = false;
+				changed_prefs.cpu_memory_cycle_exact = false;
+				changed_prefs.address_space_24 = false;
+				changed_prefs.cpu_compatible = false;
 			}
 			else
 			{
@@ -205,6 +197,7 @@ public:
 			changed_prefs.compfpu = chkFPUJIT->isSelected();
 		}
 		RefreshPanelCPU();
+		RefreshPanelRAM();
 	}
 };
 
@@ -215,14 +208,32 @@ class FPUActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		if (actionEvent.getSource() == chkFPUstrict) {
+		if (actionEvent.getSource() == chkFPUstrict)
+		{
 			changed_prefs.fpu_strict = chkFPUstrict->isSelected();
-
 		}
 		RefreshPanelCPU();
 	}
 };
+
 static FPUActionListener* fpuActionListener;
+
+class CPUIdleSliderActionListener : public gcn::ActionListener
+{
+public:
+	void action(const gcn::ActionEvent& actionEvent) override
+	{
+		if (actionEvent.getSource() == sldCpuIdle)
+		{
+			changed_prefs.cpu_idle = static_cast<int>(sldCpuIdle->getValue());
+			if (changed_prefs.cpu_idle > 0)
+				changed_prefs.cpu_idle = (12 - changed_prefs.cpu_idle) * 15;
+		}
+		RefreshPanelCPU();
+	}
+};
+
+static CPUIdleSliderActionListener* cpuIdleActionListener;
 
 void InitPanelCPU(const struct _ConfigCategory& category)
 {
@@ -231,109 +242,132 @@ void InitPanelCPU(const struct _ConfigCategory& category)
 	cpuCompActionListener = new CPUCompActionListener();
 	jitActionListener = new JITActionListener();
 	fpuActionListener = new FPUActionListener();
+	cpuIdleActionListener = new CPUIdleSliderActionListener();
 
-	optCPU68000 = new gcn::UaeRadioButton("68000", "radiocpugroup");
+	optCPU68000 = new gcn::RadioButton("68000", "radiocpugroup");
+	optCPU68000->setId("68000");
 	optCPU68000->addActionListener(cpuButtonActionListener);
-	optCPU68010 = new gcn::UaeRadioButton("68010", "radiocpugroup");
+	optCPU68010 = new gcn::RadioButton("68010", "radiocpugroup");
+	optCPU68010->setId("68010");
 	optCPU68010->addActionListener(cpuButtonActionListener);
-	optCPU68020 = new gcn::UaeRadioButton("68020", "radiocpugroup");
+	optCPU68020 = new gcn::RadioButton("68020", "radiocpugroup");
+	optCPU68020->setId("68020");
 	optCPU68020->addActionListener(cpuButtonActionListener);
-	optCPU68030 = new gcn::UaeRadioButton("68030", "radiocpugroup");
+	optCPU68030 = new gcn::RadioButton("68030", "radiocpugroup");
+	optCPU68030->setId("68030");
 	optCPU68030->addActionListener(cpuButtonActionListener);
-	optCPU68040 = new gcn::UaeRadioButton("68040", "radiocpugroup");
+	optCPU68040 = new gcn::RadioButton("68040", "radiocpugroup");
+	optCPU68040->setId("68040");
 	optCPU68040->addActionListener(cpuButtonActionListener);
 
-	chk24Bit = new gcn::UaeCheckBox("24-bit addressing", true);
+	chk24Bit = new gcn::CheckBox("24-bit addressing", true);
 	chk24Bit->setId("CPU24Bit");
 	chk24Bit->addActionListener(cpu24BitActionListener);
 
-	chkCPUCompatible = new gcn::UaeCheckBox("More compatible", true);
+	chkCPUCompatible = new gcn::CheckBox("More compatible", true);
 	chkCPUCompatible->setId("CPUComp");
 	chkCPUCompatible->addActionListener(cpuCompActionListener);
 
-	chkJIT = new gcn::UaeCheckBox("JIT", true);
+	chkJIT = new gcn::CheckBox("JIT", true);
 	chkJIT->setId("JIT");
 	chkJIT->addActionListener(jitActionListener);
 
 	grpCPU = new gcn::Window("CPU");
 	grpCPU->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
-	grpCPU->add(optCPU68000, 5, 10);
-	grpCPU->add(optCPU68010, 5, 40);
-	grpCPU->add(optCPU68020, 5, 70);
-	grpCPU->add(optCPU68030, 5, 100);
-	grpCPU->add(optCPU68040, 5, 130);
-	grpCPU->add(chk24Bit, 5, 170);
-	grpCPU->add(chkCPUCompatible, 5, 200);
-	grpCPU->add(chkJIT, 5, 230);
+	grpCPU->add(optCPU68000, 10, 10);
+	grpCPU->add(optCPU68010, 10, 40);
+	grpCPU->add(optCPU68020, 10, 70);
+	grpCPU->add(optCPU68030, 10, 100);
+	grpCPU->add(optCPU68040, 10, 130);
+	grpCPU->add(chk24Bit, 10, 170);
+	grpCPU->add(chkCPUCompatible, 10, 200);
+	grpCPU->add(chkJIT, 10, 230);
 	grpCPU->setMovable(false);
-	grpCPU->setSize(175, 275);
+	grpCPU->setSize(chk24Bit->getWidth() + 20, 285);
+	grpCPU->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpCPU->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpCPU);
 
 	fpuButtonActionListener = new FPUButtonActionListener();
 
-	optFPUnone = new gcn::UaeRadioButton("None", "radiofpugroup");
+	optFPUnone = new gcn::RadioButton("None", "radiofpugroup");
 	optFPUnone->setId("FPUnone");
 	optFPUnone->addActionListener(fpuButtonActionListener);
 
-	optFPU68881 = new gcn::UaeRadioButton("68881", "radiofpugroup");
+	optFPU68881 = new gcn::RadioButton("68881", "radiofpugroup");
+	optFPU68881->setId("68881");
 	optFPU68881->addActionListener(fpuButtonActionListener);
 
-	optFPU68882 = new gcn::UaeRadioButton("68882", "radiofpugroup");
+	optFPU68882 = new gcn::RadioButton("68882", "radiofpugroup");
+	optFPU68882->setId("68882");
 	optFPU68882->addActionListener(fpuButtonActionListener);
 
-	optFPUinternal = new gcn::UaeRadioButton("CPU internal", "radiofpugroup");
+	optFPUinternal = new gcn::RadioButton("CPU internal", "radiofpugroup");
+	optFPUinternal->setId("CPU internal");
 	optFPUinternal->addActionListener(fpuButtonActionListener);
 
-	chkFPUstrict = new gcn::UaeCheckBox("More compatible", true);
+	chkFPUstrict = new gcn::CheckBox("More compatible", true);
 	chkFPUstrict->setId("FPUstrict");
 	chkFPUstrict->addActionListener(fpuActionListener);
 
-	chkFPUJIT = new gcn::UaeCheckBox("FPU JIT", true);
+	chkFPUJIT = new gcn::CheckBox("FPU JIT", true);
 	chkFPUJIT->setId("FPUJIT");
 	chkFPUJIT->addActionListener(jitActionListener);
 
 	grpFPU = new gcn::Window("FPU");
 	grpFPU->setPosition(DISTANCE_BORDER + grpCPU->getWidth() + DISTANCE_NEXT_X, DISTANCE_BORDER);
-	grpFPU->add(optFPUnone, 5, 10);
-	grpFPU->add(optFPU68881, 5, 40);
-	grpFPU->add(optFPU68882, 5, 70);
-	grpFPU->add(optFPUinternal, 5, 100);
-	grpFPU->add(chkFPUstrict, 5, 140);
-	grpFPU->add(chkFPUJIT, 5, 170);
+	grpFPU->add(optFPUnone, 10, 10);
+	grpFPU->add(optFPU68881, 10, 40);
+	grpFPU->add(optFPU68882, 10, 70);
+	grpFPU->add(optFPUinternal, 10, 100);
+	grpFPU->add(chkFPUstrict, 10, 140);
+	grpFPU->add(chkFPUJIT, 10, 170);
 	grpFPU->setMovable(false);
-	grpFPU->setSize(185, 215);
+	grpFPU->setSize(175, 225);
+	grpFPU->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpFPU->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpFPU);
 
 	cpuSpeedButtonActionListener = new CPUSpeedButtonActionListener();
 
-	opt7Mhz = new gcn::UaeRadioButton("7 Mhz", "radiocpuspeedgroup");
+	opt7Mhz = new gcn::RadioButton("7 Mhz", "radiocpuspeedgroup");
+	opt7Mhz->setId("7 Mhz");
 	opt7Mhz->addActionListener(cpuSpeedButtonActionListener);
 
-	opt14Mhz = new gcn::UaeRadioButton("14 Mhz", "radiocpuspeedgroup");
+	opt14Mhz = new gcn::RadioButton("14 Mhz", "radiocpuspeedgroup");
+	opt14Mhz->setId("14 Mhz");
 	opt14Mhz->addActionListener(cpuSpeedButtonActionListener);
 
-	opt28Mhz = new gcn::UaeRadioButton("25 Mhz", "radiocpuspeedgroup");
-	opt28Mhz->addActionListener(cpuSpeedButtonActionListener);
+	opt25Mhz = new gcn::RadioButton("25 Mhz", "radiocpuspeedgroup");
+	opt25Mhz->setId("25 Mhz");
+	opt25Mhz->addActionListener(cpuSpeedButtonActionListener);
 
-	optFastest = new gcn::UaeRadioButton("Fastest", "radiocpuspeedgroup");
+	optFastest = new gcn::RadioButton("Fastest", "radiocpuspeedgroup");
+	optFastest->setId("Fastest");
 	optFastest->addActionListener(cpuSpeedButtonActionListener);
 
-	optTurbo = new gcn::UaeRadioButton("Turbo", "radiocpuspeedgroup");
-	optTurbo->addActionListener(cpuSpeedButtonActionListener);
+	lblCpuIdle = new gcn::Label("CPU Idle");
+	sldCpuIdle = new gcn::Slider(0, 10);
+	sldCpuIdle->setSize(70, SLIDER_HEIGHT);
+	sldCpuIdle->setBaseColor(gui_baseCol);
+	sldCpuIdle->setMarkerLength(20);
+	sldCpuIdle->setStepLength(1);
+	sldCpuIdle->setId("sldCpuIdle");
+	sldCpuIdle->addActionListener(cpuIdleActionListener);
 
 	grpCPUSpeed = new gcn::Window("CPU Speed");
 	grpCPUSpeed->setPosition(grpFPU->getX() + grpFPU->getWidth() + DISTANCE_NEXT_X, DISTANCE_BORDER);
-	grpCPUSpeed->add(opt7Mhz, 5, 10);
-	grpCPUSpeed->add(opt14Mhz, 5, 40);
-	grpCPUSpeed->add(opt28Mhz, 5, 70);
-	grpCPUSpeed->add(optFastest, 5, 100);
-	grpCPUSpeed->add(optTurbo, 5, 130);
+	grpCPUSpeed->add(opt7Mhz, 10, 10);
+	grpCPUSpeed->add(opt14Mhz, 10, 40);
+	grpCPUSpeed->add(opt25Mhz, 10, 70);
+	grpCPUSpeed->add(optFastest, 10, 100);
+	grpCPUSpeed->add(lblCpuIdle, 10, 160);
+	grpCPUSpeed->add(sldCpuIdle, lblCpuIdle->getWidth() + 20, 160);
 	grpCPUSpeed->setMovable(false);
-	grpCPUSpeed->setSize(95, 200);
+	grpCPUSpeed->setSize(175, 225);
+	grpCPUSpeed->setTitleBarHeight(TITLEBAR_HEIGHT);
 	grpCPUSpeed->setBaseColor(gui_baseCol);
 
 	category.panel->add(grpCPUSpeed);
@@ -370,9 +404,12 @@ void ExitPanelCPU()
 
 	delete opt7Mhz;
 	delete opt14Mhz;
-	delete opt28Mhz;
+	delete opt25Mhz;
 	delete optFastest;
-	delete optTurbo;
+	delete lblCpuIdle;
+	delete sldCpuIdle;
+	delete cpuIdleActionListener;
+	
 	delete grpCPUSpeed;
 	delete cpuSpeedButtonActionListener;
 }
@@ -392,10 +429,10 @@ void RefreshPanelCPU()
 		optCPU68040->setSelected(true);
 
 	chk24Bit->setSelected(changed_prefs.address_space_24);
-	chk24Bit->setEnabled(changed_prefs.cpu_model == 68020);
+	chk24Bit->setEnabled(changed_prefs.cpu_model == 68020 && changed_prefs.cachesize == 0);
 	chkCPUCompatible->setSelected(changed_prefs.cpu_compatible > 0);
-	chkCPUCompatible->setEnabled(changed_prefs.cpu_model <= 68010);
-	chkJIT->setEnabled(changed_prefs.cpu_model > 68010);
+	chkCPUCompatible->setEnabled(changed_prefs.cachesize == 0);
+	chkJIT->setEnabled(changed_prefs.cpu_model >= 68020);
 	chkJIT->setSelected(changed_prefs.cachesize > 0);
 
 	switch (changed_prefs.fpu_model)
@@ -423,8 +460,8 @@ void RefreshPanelCPU()
 	chkFPUJIT->setEnabled(changed_prefs.cachesize > 0);
 	chkFPUJIT->setSelected(changed_prefs.compfpu);
 #else
-  chkFPUJIT->setSelected(false);
-  chkFPUJIT->setEnabled(false);
+	chkFPUJIT->setSelected(false);
+	chkFPUJIT->setEnabled(false);
 #endif
 
 	if (changed_prefs.m68k_speed == M68K_SPEED_7MHZ_CYCLES)
@@ -432,14 +469,14 @@ void RefreshPanelCPU()
 	else if (changed_prefs.m68k_speed == M68K_SPEED_14MHZ_CYCLES)
 		opt14Mhz->setSelected(true);
 	else if (changed_prefs.m68k_speed == M68K_SPEED_25MHZ_CYCLES)
-		opt28Mhz->setSelected(true);
+		opt25Mhz->setSelected(true);
 	else if (changed_prefs.m68k_speed == -1)
 		optFastest->setSelected(true);
-	else if (changed_prefs.m68k_speed == -30)
-		optTurbo->setSelected(true);
+
+	sldCpuIdle->setValue(changed_prefs.cpu_idle == 0 ? 0 : 12 - changed_prefs.cpu_idle / 15);
 }
 
-bool HelpPanelCPU(std::vector<std::string> &helptext)
+bool HelpPanelCPU(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("Select the required Amiga CPU (68000 - 68040).");
@@ -447,17 +484,20 @@ bool HelpPanelCPU(std::vector<std::string> &helptext)
 	helptext.emplace_back("addressing (68020). The option \"More compatible\" is only available if 68000 or 68010");
 	helptext.emplace_back("is selected and emulates simple prefetch of the 68000. This may improve compatibility");
 	helptext.emplace_back("in few situations but is not required for most games and demos.");
-	helptext.emplace_back("");
-	helptext.emplace_back("JIT enables the Just-in-time compiler. This may break compatibility in some games.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("JIT/JIT FPU enables the Just-in-time compiler. This may break compatibility in some games.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("The available FPU models depending on the selected CPU.");
 	helptext.emplace_back("The option \"More compatible\" activates more accurate rounding and compare of two floats.");
-	helptext.emplace_back("");
-	helptext.emplace_back("With \"CPU Speed\" you can choose the clock rate of the Amiga.");
-	helptext.emplace_back("Use 7MHz for A500 games or 14MHz for A1200 ones. Fastest uses more emulation time");
-	helptext.emplace_back("for the CPU, and Turbo will give only the minimum time to the chipset, using as");
-	helptext.emplace_back("much as possible for the CPU, usually resulting in dropping frames also.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("With \"CPU Speed\" you can choose the clock rate of the emulated Amiga.");
+	helptext.emplace_back("Use 7MHz for A500 or 14MHz for A1200 speed. Fastest Possible will give only the minimum time");
+	helptext.emplace_back("to the Chipset, using as much as possible for the CPU, which might result in dropping");
+	helptext.emplace_back("frames also.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("You can use the CPU Idle slider to set how much the CPU emulation should sleep when idle.");
+	helptext.emplace_back("This is useful to keep the system temperature down.");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("In current version, you will not see a difference in the performance for 68020,");
 	helptext.emplace_back("68030 and 68040 CPUs. The CPU cycles for the opcodes are based on 68020. The different");
 	helptext.emplace_back("cycles for 68030 and 68040 may come in a later version.");

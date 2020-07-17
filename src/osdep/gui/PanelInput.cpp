@@ -1,66 +1,62 @@
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeDropDown.hpp"
-#include "UaeCheckBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
 #include "gui_handling.h"
 #include "inputdevice.h"
 
-#ifdef ANDROIDSDL
+#if 0
+#ifdef ANDROID
 #include <SDL_android.h>
+#endif
 #endif
 
 static const char* mousespeed_list[] = {".25", ".5", "1x", "2x", "4x"};
 static const int mousespeed_values[] = {2, 5, 10, 20, 40};
 
 static gcn::Label* lblPort0;
-static gcn::UaeDropDown* cboPort0;
+static gcn::DropDown* cboPort0;
 static gcn::Label* lblPort1;
-static gcn::UaeDropDown* cboPort1;
+static gcn::DropDown* cboPort1;
 
-static gcn::UaeDropDown* cboPort0mode;
-static gcn::UaeDropDown* cboPort1mode;
+static gcn::DropDown* cboPort0Autofire;
+static gcn::DropDown* cboPort1Autofire;
+static gcn::DropDown* cboPort2Autofire;
+static gcn::DropDown* cboPort3Autofire;
+
+static gcn::DropDown* cboPort0mode;
+static gcn::DropDown* cboPort1mode;
 
 static gcn::Label* lblPort0mousemode;
-static gcn::UaeDropDown* cboPort0mousemode;
+static gcn::DropDown* cboPort0mousemode;
 static gcn::Label* lblPort1mousemode;
-static gcn::UaeDropDown* cboPort1mousemode;
+static gcn::DropDown* cboPort1mousemode;
 
+static gcn::Label* lblParallelPortAdapter;
 static gcn::Label* lblPort2;
-static gcn::UaeDropDown* cboPort2;
+static gcn::DropDown* cboPort2;
 static gcn::Label* lblPort3;
-static gcn::UaeDropDown* cboPort3;
+static gcn::DropDown* cboPort3;
 
-static gcn::UaeDropDown* cboPort2mode;
-static gcn::UaeDropDown* cboPort3mode;
-
-static gcn::Label* lblAutofire;
-static gcn::UaeDropDown* cboAutofire;
+static gcn::Label* lblAutofireRate;
+static gcn::DropDown* cboAutofireRate;
 static gcn::Label* lblMouseSpeed;
 static gcn::Label* lblMouseSpeedInfo;
 static gcn::Slider* sldMouseSpeed;
-static gcn::UaeCheckBox* chkMouseHack;
+static gcn::CheckBox* chkMouseHack;
 
 class StringListModel : public gcn::ListModel
 {
-  private:
-    std::vector<std::string> values;
+private:
+	std::vector<std::string> values;
 public:
 	StringListModel(const char* entries[], const int count)
 	{
-		for (int i = 0; i < count; ++i)
+		for (auto i = 0; i < count; ++i)
 			values.emplace_back(entries[i]);
 	}
 
@@ -75,9 +71,9 @@ public:
 		return 0;
 	}
 
-	string getElementAt(const int i) override
+	std::string getElementAt(const int i) override
 	{
-		if (i < 0 || static_cast<unsigned int>(i) >= values.size())
+		if (i < 0 || i >= static_cast<int>(values.size()))
 			return "---";
 		return values[i];
 	}
@@ -86,14 +82,17 @@ public:
 static StringListModel ctrlPortList(nullptr, 0);
 static int portListIDs[MAX_INPUT_DEVICES];
 
-const char* autofireValues[] = {"Off", "Slow", "Medium", "Fast"};
-StringListModel autofireList(autofireValues, 4);
+const char* autoFireValues[] = { "No autofire", "Autofire", "Autofire (toggle)", "Autofire (always)" };
+StringListModel autoFireList(autoFireValues, 4);
 
-const char* mousemapValues[] = {"None", "Left", "Right", "Both"};
+const char* autoFireRateValues[] = { "Off", "Slow", "Medium", "Fast" };
+StringListModel autoFireRateList(autoFireRateValues, 4);
+
+const char* mousemapValues[] = { "None", "Left", "Right", "Both" };
 StringListModel ctrlPortMouseModeList(mousemapValues, 4);
 
-const char* joyportmodes[] = {"Mouse", "Joystick", "CD32", "Default"};
-StringListModel ctrlPortModeList(joyportmodes, 4);
+const char* joyportmodes[] = { "Default", "Wheel Mouse", "Mouse", "Joystick", "Gamepad", "Analog Joystick", "CDTV remote mouse", "CD32 pad"};
+StringListModel ctrlPortModeList(joyportmodes, 8);
 
 class InputActionListener : public gcn::ActionListener
 {
@@ -182,38 +181,31 @@ public:
 			set_port(sel, current_port);
 		}
 
+		else if (actionEvent.getSource() == cboPort0Autofire)
+			changed_prefs.jports[0].autofire = cboPort0Autofire->getSelected();
+		else if (actionEvent.getSource() == cboPort1Autofire)
+			changed_prefs.jports[1].autofire = cboPort1Autofire->getSelected();
+		else if (actionEvent.getSource() == cboPort2Autofire)
+			changed_prefs.jports[2].autofire = cboPort2Autofire->getSelected();
+		else if (actionEvent.getSource() == cboPort3Autofire)
+			changed_prefs.jports[3].autofire = cboPort3Autofire->getSelected();
+		
 		else if (actionEvent.getSource() == cboPort0mode)
 		{
-			if (cboPort0mode->getSelected() == 0)
-				changed_prefs.jports[0].mode = JSEM_MODE_MOUSE;
-			else if (cboPort0mode->getSelected() == 1)
-				changed_prefs.jports[0].mode = JSEM_MODE_JOYSTICK;
-			else if (cboPort0mode->getSelected() == 2)
-				changed_prefs.jports[0].mode = JSEM_MODE_JOYSTICK_CD32;
-			else
-				changed_prefs.jports[0].mode = JSEM_MODE_DEFAULT;
-
+			changed_prefs.jports[0].mode = cboPort0mode->getSelected();
 			inputdevice_updateconfig(nullptr, &changed_prefs);
 			RefreshPanelInput();
 			RefreshPanelCustom();
 		}
 		else if (actionEvent.getSource() == cboPort1mode)
 		{
-			if (cboPort1mode->getSelected() == 0)
-				changed_prefs.jports[1].mode = JSEM_MODE_MOUSE;
-			else if (cboPort1mode->getSelected() == 1)
-				changed_prefs.jports[1].mode = JSEM_MODE_JOYSTICK;
-			else if (cboPort1mode->getSelected() == 2)
-				changed_prefs.jports[1].mode = JSEM_MODE_JOYSTICK_CD32;
-			else
-				changed_prefs.jports[1].mode = JSEM_MODE_DEFAULT;
-
+			changed_prefs.jports[1].mode = cboPort1mode->getSelected();
 			inputdevice_updateconfig(nullptr, &changed_prefs);
 			RefreshPanelInput();
 			RefreshPanelCustom();
 		}
 
-		// mousemap drop-down change
+			// mousemap drop-down change
 		else if (actionEvent.getSource() == cboPort0mousemode)
 		{
 			changed_prefs.jports[0].mousemap = cboPort0mousemode->getSelected();
@@ -225,13 +217,13 @@ public:
 			inputdevice_updateconfig(nullptr, &changed_prefs);
 		}
 
-		else if (actionEvent.getSource() == cboAutofire)
+		else if (actionEvent.getSource() == cboAutofireRate)
 		{
-			if (cboAutofire->getSelected() == 0)
+			if (cboAutofireRate->getSelected() == 0)
 				changed_prefs.input_autofire_linecnt = 0;
-			else if (cboAutofire->getSelected() == 1)
+			else if (cboAutofireRate->getSelected() == 1)
 				changed_prefs.input_autofire_linecnt = 12 * 312;
-			else if (cboAutofire->getSelected() == 2)
+			else if (cboAutofireRate->getSelected() == 2)
 				changed_prefs.input_autofire_linecnt = 8 * 312;
 			else
 				changed_prefs.input_autofire_linecnt = 4 * 312;
@@ -239,17 +231,19 @@ public:
 
 		else if (actionEvent.getSource() == sldMouseSpeed)
 		{
-			changed_prefs.input_joymouse_multiplier = mousespeed_values[int(sldMouseSpeed->getValue())];
+			changed_prefs.input_joymouse_multiplier = mousespeed_values[static_cast<int>(sldMouseSpeed->getValue())];
 			RefreshPanelInput();
 		}
 
 		else if (actionEvent.getSource() == chkMouseHack)
 		{
-#ifdef ANDROIDSDL
+#if 0
+#ifdef ANDROID
 			if (chkMouseHack->isSelected())
 				SDL_ANDROID_SetMouseEmulationMode(0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
 			else
 				SDL_ANDROID_SetMouseEmulationMode(1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
+#endif
 #endif
 			changed_prefs.input_tablet = chkMouseHack->isSelected() ? TABLET_MOUSEHACK : TABLET_OFF;
 		}
@@ -270,7 +264,7 @@ void InitPanelInput(const struct _ConfigCategory& category)
 		int i;
 		for (i = 0; i < inputdevice_get_device_total(IDTYPE_MOUSE); i++)
 		{
-			const auto device_name = inputdevice_get_device_name(IDTYPE_MOUSE, i);
+			const auto* const device_name = inputdevice_get_device_name(IDTYPE_MOUSE, i);
 			if (device_name && device_name[0])
 			{
 				ctrlPortList.AddElement(inputdevice_get_device_name(IDTYPE_MOUSE, i));
@@ -288,54 +282,85 @@ void InitPanelInput(const struct _ConfigCategory& category)
 	}
 
 	inputActionListener = new InputActionListener();
-	const auto textFieldWidth = category.panel->getWidth() - (2 * DISTANCE_BORDER - SMALL_BUTTON_WIDTH - DISTANCE_NEXT_X);
-	
-	lblPort0 = new gcn::Label("Port 0 [Mouse]:");
+	const auto textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER - 60;
+
+	lblPort0 = new gcn::Label("Port 0:");
 	lblPort0->setAlignment(gcn::Graphics::RIGHT);
-	cboPort0 = new gcn::UaeDropDown(&ctrlPortList);
-	cboPort0->setSize(textFieldWidth/2, cboPort0->getHeight());
+	cboPort0 = new gcn::DropDown(&ctrlPortList);
+	cboPort0->setSize(textFieldWidth, cboPort0->getHeight());
 	cboPort0->setBaseColor(gui_baseCol);
 	cboPort0->setBackgroundColor(colTextboxBackground);
 	cboPort0->setId("cboPort0");
 	cboPort0->addActionListener(inputActionListener);
 
-	cboPort0mode = new gcn::UaeDropDown(&ctrlPortModeList);
+	cboPort0Autofire = new gcn::DropDown(&autoFireList);
+	cboPort0Autofire->setSize(150, cboPort0Autofire->getHeight());
+	cboPort0Autofire->setBaseColor(gui_baseCol);
+	cboPort0Autofire->setBackgroundColor(colTextboxBackground);
+	cboPort0Autofire->setId("cboPort0Autofire");
+	cboPort0Autofire->addActionListener(inputActionListener);
+
+	cboPort1Autofire = new gcn::DropDown(&autoFireList);
+	cboPort1Autofire->setSize(150, cboPort1Autofire->getHeight());
+	cboPort1Autofire->setBaseColor(gui_baseCol);
+	cboPort1Autofire->setBackgroundColor(colTextboxBackground);
+	cboPort1Autofire->setId("cboPort1Autofire");
+	cboPort1Autofire->addActionListener(inputActionListener);
+
+	cboPort2Autofire = new gcn::DropDown(&autoFireList);
+	cboPort2Autofire->setSize(150, cboPort2Autofire->getHeight());
+	cboPort2Autofire->setBaseColor(gui_baseCol);
+	cboPort2Autofire->setBackgroundColor(colTextboxBackground);
+	cboPort2Autofire->setId("cboPort2Autofire");
+	cboPort2Autofire->addActionListener(inputActionListener);
+
+	cboPort3Autofire = new gcn::DropDown(&autoFireList);
+	cboPort3Autofire->setSize(150, cboPort3Autofire->getHeight());
+	cboPort3Autofire->setBaseColor(gui_baseCol);
+	cboPort3Autofire->setBackgroundColor(colTextboxBackground);
+	cboPort3Autofire->setId("cboPort3Autofire");
+	cboPort3Autofire->addActionListener(inputActionListener);
+	
+	cboPort0mode = new gcn::DropDown(&ctrlPortModeList);
 	cboPort0mode->setSize(cboPort0mode->getWidth(), cboPort0mode->getHeight());
 	cboPort0mode->setBaseColor(gui_baseCol);
 	cboPort0mode->setBackgroundColor(colTextboxBackground);
 	cboPort0mode->setId("cboPort0mode");
 	cboPort0mode->addActionListener(inputActionListener);
 
-	lblPort1 = new gcn::Label("Port 1 [Joystick]:");
+	lblPort1 = new gcn::Label("Port 1:");
 	lblPort1->setAlignment(gcn::Graphics::RIGHT);
 	lblPort0->setSize(lblPort1->getWidth(), lblPort0->getHeight());
-	cboPort1 = new gcn::UaeDropDown(&ctrlPortList);
-	cboPort1->setSize(textFieldWidth/2, cboPort1->getHeight());
+	cboPort1 = new gcn::DropDown(&ctrlPortList);
+	cboPort1->setSize(textFieldWidth, cboPort1->getHeight());
 	cboPort1->setBaseColor(gui_baseCol);
 	cboPort1->setBackgroundColor(colTextboxBackground);
 	cboPort1->setId("cboPort1");
 	cboPort1->addActionListener(inputActionListener);
 
-	cboPort1mode = new gcn::UaeDropDown(&ctrlPortModeList);
+	cboPort1mode = new gcn::DropDown(&ctrlPortModeList);
 	cboPort1mode->setSize(cboPort1mode->getWidth(), cboPort1mode->getHeight());
 	cboPort1mode->setBaseColor(gui_baseCol);
 	cboPort1mode->setBackgroundColor(colTextboxBackground);
 	cboPort1mode->setId("cboPort1mode");
 	cboPort1mode->addActionListener(inputActionListener);
 
-	lblPort2 = new gcn::Label("Port 2 [Parallel 1]:");
+	lblParallelPortAdapter = new gcn::Label("Emulated parallel port joystick adapter");
+	lblParallelPortAdapter->setAlignment(gcn::Graphics::LEFT);
+	
+	lblPort2 = new gcn::Label("Port 2:");
 	lblPort2->setAlignment(gcn::Graphics::LEFT);
-	cboPort2 = new gcn::UaeDropDown(&ctrlPortList);
-	cboPort2->setSize(textFieldWidth/2, cboPort2->getHeight());
+	cboPort2 = new gcn::DropDown(&ctrlPortList);
+	cboPort2->setSize(textFieldWidth, cboPort2->getHeight());
 	cboPort2->setBaseColor(gui_baseCol);
 	cboPort2->setBackgroundColor(colTextboxBackground);
 	cboPort2->setId("cboPort2");
 	cboPort2->addActionListener(inputActionListener);
 
-	lblPort3 = new gcn::Label("Port 3 [Parallel 2]:");
+	lblPort3 = new gcn::Label("Port 3:");
 	lblPort3->setAlignment(gcn::Graphics::LEFT);
-	cboPort3 = new gcn::UaeDropDown(&ctrlPortList);
-	cboPort3->setSize(textFieldWidth/2, cboPort3->getHeight());
+	cboPort3 = new gcn::DropDown(&ctrlPortList);
+	cboPort3->setSize(textFieldWidth, cboPort3->getHeight());
 	cboPort3->setBaseColor(gui_baseCol);
 	cboPort3->setBackgroundColor(colTextboxBackground);
 	cboPort3->setId("cboPort3");
@@ -343,7 +368,7 @@ void InitPanelInput(const struct _ConfigCategory& category)
 
 	lblPort0mousemode = new gcn::Label("Mouse Stick 0:");
 	lblPort0mousemode->setAlignment(gcn::Graphics::RIGHT);
-	cboPort0mousemode = new gcn::UaeDropDown(&ctrlPortMouseModeList);
+	cboPort0mousemode = new gcn::DropDown(&ctrlPortMouseModeList);
 	cboPort0mousemode->setSize(68, cboPort0mousemode->getHeight());
 	cboPort0mousemode->setBaseColor(gui_baseCol);
 	cboPort0mousemode->setBackgroundColor(colTextboxBackground);
@@ -352,21 +377,21 @@ void InitPanelInput(const struct _ConfigCategory& category)
 
 	lblPort1mousemode = new gcn::Label("Mouse Stick 1:");
 	lblPort1mousemode->setAlignment(gcn::Graphics::RIGHT);
-	cboPort1mousemode = new gcn::UaeDropDown(&ctrlPortMouseModeList);
+	cboPort1mousemode = new gcn::DropDown(&ctrlPortMouseModeList);
 	cboPort1mousemode->setSize(68, cboPort1mousemode->getHeight());
 	cboPort1mousemode->setBaseColor(gui_baseCol);
 	cboPort1mousemode->setBackgroundColor(colTextboxBackground);
 	cboPort1mousemode->setId("cboPort1mousemode");
 	cboPort1mousemode->addActionListener(inputActionListener);
 
-	lblAutofire = new gcn::Label("Autofire Rate:");
-	lblAutofire->setAlignment(gcn::Graphics::RIGHT);
-	cboAutofire = new gcn::UaeDropDown(&autofireList);
-	cboAutofire->setSize(80, cboAutofire->getHeight());
-	cboAutofire->setBaseColor(gui_baseCol);
-	cboAutofire->setBackgroundColor(colTextboxBackground);
-	cboAutofire->setId("cboAutofire");
-	cboAutofire->addActionListener(inputActionListener);
+	lblAutofireRate = new gcn::Label("Autofire Rate:");
+	lblAutofireRate->setAlignment(gcn::Graphics::RIGHT);
+	cboAutofireRate = new gcn::DropDown(&autoFireRateList);
+	cboAutofireRate->setSize(80, cboAutofireRate->getHeight());
+	cboAutofireRate->setBaseColor(gui_baseCol);
+	cboAutofireRate->setBackgroundColor(colTextboxBackground);
+	cboAutofireRate->setId("cboAutofireRate");
+	cboAutofireRate->addActionListener(inputActionListener);
 
 	lblMouseSpeed = new gcn::Label("Mouse Speed:");
 	lblMouseSpeed->setAlignment(gcn::Graphics::RIGHT);
@@ -379,33 +404,49 @@ void InitPanelInput(const struct _ConfigCategory& category)
 	sldMouseSpeed->addActionListener(inputActionListener);
 	lblMouseSpeedInfo = new gcn::Label(".25");
 
-  	chkMouseHack = new gcn::UaeCheckBox("Enable mousehack");
-  	chkMouseHack->setId("MouseHack");
-  	chkMouseHack->addActionListener(inputActionListener);
-	
+	chkMouseHack = new gcn::CheckBox("Enable mousehack");
+	chkMouseHack->setId("MouseHack");
+	chkMouseHack->addActionListener(inputActionListener);
+
 	auto posY = DISTANCE_BORDER;
 	category.panel->add(lblPort0, DISTANCE_BORDER, posY);
 	category.panel->add(cboPort0, DISTANCE_BORDER + lblPort0->getWidth() + 8, posY);
-	category.panel->add(cboPort0mode, cboPort0->getX() + cboPort0->getWidth() + DISTANCE_NEXT_X, posY);
 	posY += cboPort0->getHeight() + DISTANCE_NEXT_Y;
+
+	category.panel->add(cboPort0Autofire, cboPort0->getX(), posY);
+	category.panel->add(cboPort0mode, cboPort0Autofire->getX() + cboPort0Autofire->getWidth() + DISTANCE_NEXT_X, posY);
+	posY += cboPort0Autofire->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblPort1, DISTANCE_BORDER, posY);
 	category.panel->add(cboPort1, DISTANCE_BORDER + lblPort1->getWidth() + 8, posY);
-	category.panel->add(cboPort1mode, cboPort1->getX() + cboPort1->getWidth() + DISTANCE_NEXT_X, posY);
 	posY += cboPort1->getHeight() + DISTANCE_NEXT_Y;
 
+	category.panel->add(cboPort1Autofire, cboPort1->getX(), posY);
+	category.panel->add(cboPort1mode, cboPort1Autofire->getX() + cboPort1Autofire->getWidth() + DISTANCE_NEXT_X, posY);
+	posY += cboPort1Autofire->getHeight() + DISTANCE_NEXT_Y * 2;
+
+	category.panel->add(lblParallelPortAdapter, DISTANCE_BORDER, posY);
+	posY += lblParallelPortAdapter->getHeight() + DISTANCE_NEXT_Y;
+	
 	category.panel->add(lblPort2, DISTANCE_BORDER, posY);
 	category.panel->add(cboPort2, DISTANCE_BORDER + lblPort2->getWidth() + 8, posY);
 	posY += cboPort2->getHeight() + DISTANCE_NEXT_Y;
 
+	category.panel->add(cboPort2Autofire, cboPort2->getX(), posY);
+	posY += cboPort2Autofire->getHeight() + DISTANCE_NEXT_Y;
+	
 	category.panel->add(lblPort3, DISTANCE_BORDER, posY);
 	category.panel->add(cboPort3, DISTANCE_BORDER + lblPort3->getWidth() + 8, posY);
-	posY += cboPort3->getHeight() + DISTANCE_NEXT_Y*2;
+	posY += cboPort3->getHeight() + DISTANCE_NEXT_Y;
 
+	category.panel->add(cboPort3Autofire, cboPort3->getX(), posY);
+	posY += cboPort3Autofire->getHeight() + DISTANCE_NEXT_Y * 2;
+	
 	category.panel->add(lblPort0mousemode, DISTANCE_BORDER, posY);
 	category.panel->add(cboPort0mousemode, lblPort0mousemode->getX() + lblPort0mousemode->getWidth() + 8, posY);
 
-	category.panel->add(lblMouseSpeed, cboPort0mousemode->getX() + cboPort0mousemode->getWidth() + (DISTANCE_NEXT_X * 2), posY);
+	category.panel->add(lblMouseSpeed,
+	                    cboPort0mousemode->getX() + cboPort0mousemode->getWidth() + (DISTANCE_NEXT_X * 2), posY);
 	category.panel->add(sldMouseSpeed, lblMouseSpeed->getX() + lblMouseSpeed->getWidth() + 8, posY);
 	category.panel->add(lblMouseSpeedInfo, sldMouseSpeed->getX() + sldMouseSpeed->getWidth() + 8, posY);
 	posY += lblMouseSpeed->getHeight() + DISTANCE_NEXT_Y;
@@ -414,9 +455,9 @@ void InitPanelInput(const struct _ConfigCategory& category)
 	category.panel->add(cboPort1mousemode, lblPort1mousemode->getX() + lblPort1mousemode->getWidth() + 8, posY);
 	posY += lblPort1mousemode->getHeight() + DISTANCE_NEXT_Y * 2;
 
-	category.panel->add(lblAutofire, DISTANCE_BORDER, posY);
-	category.panel->add(cboAutofire, DISTANCE_BORDER + lblAutofire->getWidth() + 8, posY);
-	category.panel->add(chkMouseHack, cboAutofire->getX() + cboAutofire->getWidth() + DISTANCE_NEXT_X, posY);
+	category.panel->add(lblAutofireRate, DISTANCE_BORDER, posY);
+	category.panel->add(cboAutofireRate, DISTANCE_BORDER + lblAutofireRate->getWidth() + 8, posY);
+	category.panel->add(chkMouseHack, cboAutofireRate->getX() + cboAutofireRate->getWidth() + DISTANCE_NEXT_X, posY);
 	posY += chkMouseHack->getHeight() + DISTANCE_NEXT_Y;
 
 	RefreshPanelInput();
@@ -427,29 +468,35 @@ void ExitPanelInput()
 {
 	delete lblPort0;
 	delete cboPort0;
+	delete cboPort0Autofire;
 	delete cboPort0mode;
 	delete lblPort0mousemode;
 	delete cboPort0mousemode;
 
 	delete lblPort1;
 	delete cboPort1;
+	delete cboPort1Autofire;
 	delete cboPort1mode;
 
 	delete lblPort1mousemode;
 	delete cboPort1mousemode;
 
+	delete lblParallelPortAdapter;
 	delete lblPort2;
 	delete cboPort2;
+	delete cboPort2Autofire;
+	
 	delete lblPort3;
 	delete cboPort3;
-
-	delete lblAutofire;
-	delete cboAutofire;
+	delete cboPort3Autofire;
+	
+	delete lblAutofireRate;
+	delete cboAutofireRate;
 	delete lblMouseSpeed;
 	delete sldMouseSpeed;
 	delete lblMouseSpeedInfo;
 
-  	delete chkMouseHack;
+	delete chkMouseHack;
 
 	delete inputActionListener;
 }
@@ -506,33 +553,21 @@ void RefreshPanelInput()
 	cboPort3->setSelected(idx);
 
 	if (changed_prefs.input_autofire_linecnt == 0)
-		cboAutofire->setSelected(0);
+		cboAutofireRate->setSelected(0);
 	else if (changed_prefs.input_autofire_linecnt > 10 * 312)
-		cboAutofire->setSelected(1);
+		cboAutofireRate->setSelected(1);
 	else if (changed_prefs.input_autofire_linecnt > 6 * 312)
-		cboAutofire->setSelected(2);
+		cboAutofireRate->setSelected(2);
 	else
-		cboAutofire->setSelected(3);
+		cboAutofireRate->setSelected(3);
 
-
-	if (changed_prefs.jports[0].mode == JSEM_MODE_MOUSE)
-		cboPort0mode->setSelected(0);
-	else if (changed_prefs.jports[0].mode == JSEM_MODE_JOYSTICK)
-		cboPort0mode->setSelected(1);
-	else if (changed_prefs.jports[0].mode == JSEM_MODE_JOYSTICK_CD32)
-		cboPort0mode->setSelected(2);
-	else
-		cboPort0mode->setSelected(3);
-
-
-	if (changed_prefs.jports[1].mode == JSEM_MODE_MOUSE)
-		cboPort1mode->setSelected(0);
-	else if (changed_prefs.jports[1].mode == JSEM_MODE_JOYSTICK)
-		cboPort1mode->setSelected(1);
-	else if (changed_prefs.jports[1].mode == JSEM_MODE_JOYSTICK_CD32)
-		cboPort1mode->setSelected(2);
-	else
-		cboPort1mode->setSelected(3);
+	cboPort0mode->setSelected(changed_prefs.jports[0].mode);
+	cboPort1mode->setSelected(changed_prefs.jports[1].mode);
+	
+	cboPort0Autofire->setSelected(changed_prefs.jports[0].autofire);
+	cboPort1Autofire->setSelected(changed_prefs.jports[1].autofire);
+	cboPort2Autofire->setSelected(changed_prefs.jports[2].autofire);
+	cboPort3Autofire->setSelected(changed_prefs.jports[3].autofire);
 
 	// changed mouse map
 	cboPort0mousemode->setSelected(changed_prefs.jports[0].mousemap);
@@ -541,19 +576,23 @@ void RefreshPanelInput()
 	if (cboPort0mode->getSelected() == 0)
 	{
 		cboPort0mousemode->setEnabled(false);
+		lblPort0mousemode->setEnabled(false);
 	}
 	else
 	{
 		cboPort0mousemode->setEnabled(true);
+		lblPort0mousemode->setEnabled(true);
 	}
 
 	if (cboPort1mode->getSelected() == 0)
 	{
 		cboPort1mousemode->setEnabled(false);
+		lblPort1mousemode->setEnabled(false);
 	}
 	else
 	{
 		cboPort1mousemode->setEnabled(true);
+		lblPort1mousemode->setEnabled(true);
 	}
 
 	for (auto i = 0; i < 5; ++i)
@@ -569,19 +608,17 @@ void RefreshPanelInput()
 	chkMouseHack->setSelected(changed_prefs.input_tablet == TABLET_MOUSEHACK);
 }
 
-bool HelpPanelInput(std::vector<std::string> &helptext)
+bool HelpPanelInput(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("You can select the control type for both ports and the rate for autofire.");
-	helptext.emplace_back("");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("Set the emulated mouse speed to .25x, .5x, 1x, 2x and 4x to slow down or ");
 	helptext.emplace_back("speed up the mouse.");
-	helptext.emplace_back("");
-  	helptext.emplace_back("When \"Enable mousehack\" is activated, you can use touch input to set .");
-  	helptext.emplace_back("the mouse pointer to the exact position. This works very well on Workbench, ");
-  	helptext.emplace_back("but many games using their own mouse handling and will not profit from this mode.");
-  	helptext.emplace_back("");
-  	helptext.emplace_back("\"Tap Delay\" specifies the time between taping the screen and an emulated ");
-  	helptext.emplace_back("mouse button click.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("When \"Enable mousehack\" is activated, you can use touch input to set");
+	helptext.emplace_back("the mouse pointer to the exact position. This works very well on Workbench, ");
+	helptext.emplace_back("but many games using their own mouse handling and will not profit from this mode.");
+	helptext.emplace_back(" ");
 	return true;
 }

@@ -5,9 +5,7 @@
   *
   */ 
 
-#include <string.h>
-#include <stdbool.h>
-
+#include "sysconfig.h"
 #include "sysdeps.h"
 
 #include "options.h"
@@ -20,8 +18,6 @@
 #include "fsdb.h"
 #include "autoconf.h"
 #include "filesys.h"
-
-#define SAVE_ROM 0
 
 static struct romlist *rl;
 static int romlist_cnt;
@@ -38,44 +34,44 @@ int romlist_count (void)
 
 TCHAR *romlist_get (const struct romdata *rd)
 {
-  int i;
+	int i;
 
-  if (!rd)
-  	return 0;
-  for (i = 0; i < romlist_cnt; i++) {
-  	if (rl[i].rd->id == rd->id)
-	    return rl[i].path;
-  }
-  return 0;
+	if (!rd)
+		return 0;
+	for (i = 0; i < romlist_cnt; i++) {
+		if (rl[i].rd->id == rd->id)
+			return rl[i].path;
+	}
+	return 0;
 }
 
 static struct romlist *romlist_getrl (const struct romdata *rd)
 {
-  int i;
-    
-  if (!rd)
-  	return 0;
-  for (i = 0; i < romlist_cnt; i++) {
-  	if (rl[i].rd == rd)
-	    return &rl[i];
-  }
-  return 0;
+	int i;
+
+	if (!rd)
+		return 0;
+	for (i = 0; i < romlist_cnt; i++) {
+		if (rl[i].rd == rd)
+			return &rl[i];
+	}
+	return 0;
 }
 
 static void romlist_cleanup (void);
 void romlist_add (const TCHAR *path, struct romdata *rd)
 {
-  struct romlist *rl2;
+	struct romlist *rl2;
 
-  if (path == NULL || rd == NULL) {
-  	romlist_cleanup ();
-  	return;
-  }
-  romlist_cnt++;
-  rl = xrealloc (struct romlist, rl, romlist_cnt);
-  rl2 = rl + romlist_cnt - 1;
-  rl2->path = my_strdup (path);
-  rl2->rd = rd;
+	if (path == NULL || rd == NULL) {
+		romlist_cleanup ();
+		return;
+	}
+	romlist_cnt++;
+	rl = xrealloc (struct romlist, rl, romlist_cnt);
+	rl2 = rl + romlist_cnt - 1;
+	rl2->path = my_strdup (path);
+	rl2->rd = rd;
 	struct romdata *rd2 = getromdatabyid (rd->id);
 	if (rd2 != rd && rd2) // replace "X" with parent name
 		rd->name = rd2->name;
@@ -84,20 +80,20 @@ void romlist_add (const TCHAR *path, struct romdata *rd)
 
 struct romdata *getromdatabypath (const TCHAR *path)
 {
-  int i;
-  for (i = 0; i < romlist_cnt; i++) {
-  	struct romdata *rd = rl[i].rd;
-  	if (rd->configname && path[0] == ':') {
-	    if (!_tcscmp(path + 1, rd->configname))
-    		return rd;
-  	}
+	int i;
+	for (i = 0; i < romlist_cnt; i++) {
+		struct romdata *rd = rl[i].rd;
+		if (rd->configname && path[0] == ':') {
+			if (!_tcscmp(path + 1, rd->configname))
+				return rd;
+		}
 		if (my_issamepath(rl[i].path, path))
-	    return rl[i].rd;
-  }
-  return NULL;
+			return rl[i].rd;
+	}
+	return NULL;
 }
 
-#define NEXT_ROM_ID 251
+#define NEXT_ROM_ID 255
 
 #define ALTROM(id,grp,num,size,flags,crc32,a,b,c,d,e) \
 { _T("X"), 0, 0, 0, 0, 0, size, id, 0, 0, flags, (grp << 16) | num, 0, NULL, crc32, a, b, c, d, e },
@@ -167,8 +163,8 @@ static struct romdata roms[] = {
 	ALTROMPN(12, 1, 2, 262144, ROMTYPE_ODD , _T("391514-02"), 0x17266a55,0x42fbed34,0x53d1f11c,0xcbde89a9,0x826f2d11,0x75cca5cc)
 	{ _T("KS ROM v3.1 (A4000)"), 3, 1, 40, 70, _T("A4000\0"), 524288, 13, 2 | 4, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0x2b4566f1, 0x81c631dd,0x096bbb31,0xd2af9029,0x9c76b774,0xdb74076c },
-  ALTROM(13, 1, 1, 262144, ROMTYPE_EVEN, 0xf9cbecc9,0x138d8cb4,0x3b8312fe,0x16d69070,0xde607469,0xb3d4078e)
-  ALTROM(13, 1, 2, 262144, ROMTYPE_ODD , 0xf8248355,0xc2379547,0x9fae3910,0xc185512c,0xa268b82f,0x1ae4fe05)
+	ALTROM(13, 1, 1, 262144, ROMTYPE_EVEN, 0xf9cbecc9,0x138d8cb4,0x3b8312fe,0x16d69070,0xde607469,0xb3d4078e)
+	ALTROM(13, 1, 2, 262144, ROMTYPE_ODD , 0xf8248355,0xc2379547,0x9fae3910,0xc185512c,0xa268b82f,0x1ae4fe05)
 	{ _T("KS ROM v3.1 (A500,A600,A2000)"), 3, 1, 40, 63, _T("A500\0A600\0A2000\0"), 524288, 14, 0, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0xfc24ae0d, 0x3B7F1493,0xB27E2128,0x30F989F2,0x6CA76C02,0x049F09CA },
 	{ _T("KS ROM v3.1 (A1200)"), 3, 1, 40, 68, _T("A1200\0"), 524288, 15, 1, 0, ROMTYPE_KICK, 0, 0, NULL,
@@ -187,18 +183,22 @@ static struct romdata roms[] = {
 	0xBA35F8EB, 0xD73AE3A3, 0x6F12BB49, 0xBBF6BA04, 0xA890FF7A, 0xAC419015 },
 	{ _T("KS ROM v3.1.4 (A500)"), 3, 1, 46, 143, _T("A500\0"), 524288, 250, 0, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0xD52B52FD, 0x8A240508, 0x7CE18222, 0x5656DD0B, 0x93069C45, 0x743F9E34 },
+	{ _T("KS ROM v3.1.4 (A500)"), 3, 1, 46, 143, _T("A500\0"), 524288, 251, 0, 0, ROMTYPE_KICK, 0, 0, NULL,
+	0x568F8786, 0xD81CD6F1, 0x31040895, 0x843D9DFA, 0x95A45BC9, 0x5EDD9704 },
+	{ _T("KS ROM v3.1.4 (A4000)"), 3, 1, 46, 143, _T("A4000\0"), 524288, 252, 2 | 4, 0, ROMTYPE_KICK, 0, 0, NULL,
+	0x1B84CB33, 0xAAB44CD6, 0x51E6B6F8, 0x1A3EFFD8, 0xE0BA6B37, 0xAB322F32 },
 #endif
 
 	{ _T("KS ROM v3.1 (A3000)"), 3, 1, 40, 68, _T("A3000\0"), 524288, 61, 2, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0xefb239cc, 0xF8E210D7,0x2B4C4853,0xE0C9B85D,0x223BA20E,0x3D1B36EE },
-  ALTROM(61, 1, 1, 262144, ROMTYPE_EVEN, 0x286b9a0d,0x6763a225,0x8ec493f7,0x408cf663,0x110dae9a,0x17803ad1)
-  ALTROM(61, 1, 2, 262144, ROMTYPE_ODD , 0x0b8cde6a,0x5f02e97b,0x48ebbba8,0x7d516a56,0xb0400c6f,0xc3434d8d)
+	ALTROM(61, 1, 1, 262144, ROMTYPE_EVEN, 0x286b9a0d,0x6763a225,0x8ec493f7,0x408cf663,0x110dae9a,0x17803ad1)
+	ALTROM(61, 1, 2, 262144, ROMTYPE_ODD , 0x0b8cde6a,0x5f02e97b,0x48ebbba8,0x7d516a56,0xb0400c6f,0xc3434d8d)
 	{ _T("KS ROM v3.1 (A4000)(Cloanto)"), 3, 1, 40, 68, _T("A4000\0"), 524288, 31, 2 | 4, 1, ROMTYPE_KICK, 0, 0, NULL,
 	0x43b6dd22, 0xC3C48116,0x0866E60D,0x085E436A,0x24DB3617,0xFF60B5F9 },
 	{ _T("KS ROM v3.1 (A4000)"), 3, 1, 40, 68, _T("A4000\0"), 524288, 16, 2 | 4, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0xd6bae334, 0x5FE04842,0xD04A4897,0x20F0F4BB,0x0E469481,0x99406F49 },
-  ALTROM(16, 1, 1, 262144, ROMTYPE_EVEN, 0xb2af34f8,0x24e52b5e,0xfc020495,0x17387ab7,0xb1a1475f,0xc540350e)
-  ALTROM(16, 1, 2, 262144, ROMTYPE_ODD , 0xe65636a3,0x313c7cbd,0xa5779e56,0xf19a41d3,0x4e760f51,0x7626d882)
+	ALTROM(16, 1, 1, 262144, ROMTYPE_EVEN, 0xb2af34f8,0x24e52b5e,0xfc020495,0x17387ab7,0xb1a1475f,0xc540350e)
+	ALTROM(16, 1, 2, 262144, ROMTYPE_ODD , 0xe65636a3,0x313c7cbd,0xa5779e56,0xf19a41d3,0x4e760f51,0x7626d882)
 	{ _T("KS ROM v3.1 (A4000T)"), 3, 1, 40, 70, _T("A4000T\0"), 524288, 17, 2 | 4, 0, ROMTYPE_KICK, 0, 0, NULL,
 	0x75932c3a, 0xB0EC8B84,0xD6768321,0xE01209F1,0x1E6248F2,0xF5281A21 },
 	ALTROMPN(17, 1, 1, 262144, ROMTYPE_EVEN, _T("391657-01"), 0x0ca94f70,0xb3806eda,0xcb3362fc,0x16a154ce,0x1eeec5bf,0x5bc24789)
@@ -218,12 +218,12 @@ static struct romdata roms[] = {
 	{ _T("CD32 extended ROM"), 3, 1, 40, 60, _T("CD32\0"), 524288, 19, 1, 0, ROMTYPE_EXTCD32, 0, 0, NULL,
 	0x87746be2, 0x5BEF3D62,0x8CE59CC0,0x2A66E6E4,0xAE0DA48F,0x60E78F7F },
 
-  /* plain CD32 rom */
+	/* plain CD32 rom */
 	{ _T("CD32 ROM (KS + extended)"), 3, 1, 40, 60, _T("CD32\0"), 2 * 524288, 64, 1, 0, ROMTYPE_KICKCD32 | ROMTYPE_EXTCD32 | ROMTYPE_CD32, 0, 0, NULL,
 	0xf5d4f3c8, 0x9fa14825,0xc40a2475,0xa2eba5cf,0x325bd483,0xc447e7c1 },
-  /* real CD32 rom dump 391640-03 */
+	/* real CD32 rom dump 391640-03 */
 	ALTROMPN(64, 1, 1, 2 * 524288, ROMTYPE_CD32, _T("391640-03"), 0xa4fbc94a, 0x816ce6c5,0x07787585,0x0c7d4345,0x2230a9ba,0x3a2902db )
-   
+
 	{ _T("CD32 Full Motion Video Cartridge ROM"), 3, 1, 40, 30, _T("CD32FMV\0"), 262144, 23, 1, 0, ROMTYPE_CD32CART, 0, 0, NULL,
 	0xc35c37bf, 0x03ca81c7,0xa7b259cf,0x64bc9582,0x863eca0f,0x6529f435 },
 	{ _T("CD32 Full Motion Video Cartridge ROM"), 3, 1, 40, 22, _T("CD32FMV\0"), 262144, 74, 1, 0, ROMTYPE_CD32CART, 0, 0, _T("391777-01"),
@@ -257,12 +257,12 @@ static struct romdata roms[] = {
 
 	{ _T("Freezer: Action Replay Mk I v1.00"), 1, 0, 1, 0, _T("AR\0"), 65536, 52, 0, 0, ROMTYPE_AR, 0, 1, NULL,
 	0x2d921771, 0x1EAD9DDA,0x2DAD2914,0x6441F5EF,0x72183750,0x22E01248 },
-  ALTROM(52, 1, 1, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x82d6eb87, 0x7c9bac11,0x28666017,0xeee6f019,0x63fb3890,0x7fbea355)
-  ALTROM(52, 1, 2, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x40ae490c, 0x81d8e432,0x01b73fd9,0x2e204ebd,0x68af8602,0xb62ce397)
+	ALTROM(52, 1, 1, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x82d6eb87, 0x7c9bac11,0x28666017,0xeee6f019,0x63fb3890,0x7fbea355)
+	ALTROM(52, 1, 2, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x40ae490c, 0x81d8e432,0x01b73fd9,0x2e204ebd,0x68af8602,0xb62ce397)
 	{ _T("Freezer: Action Replay Mk I v1.50"), 1, 50, 1, 50, _T("AR\0"), 65536, 25, 0, 0, ROMTYPE_AR, 0, 1, NULL,
 	0xf82c4258, 0x843B433B,0x2C56640E,0x045D5FDC,0x854DC6B1,0xA4964E7C },
-  ALTROM(25, 1, 1, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x7fbd6de2, 0xb5f71a5c,0x09d65ecc,0xa8a3bc93,0x93558461,0xca190228)
-  ALTROM(25, 1, 2, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x43018069, 0xad8ff242,0xb2cbf125,0x1fc53a73,0x581cf57a,0xb69cee00)
+	ALTROM(25, 1, 1, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x7fbd6de2, 0xb5f71a5c,0x09d65ecc,0xa8a3bc93,0x93558461,0xca190228)
+	ALTROM(25, 1, 2, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x43018069, 0xad8ff242,0xb2cbf125,0x1fc53a73,0x581cf57a,0xb69cee00)
 	{ _T("Freezer: Action Replay Mk II v2.05"), 2, 5, 2, 5, _T("AR\0"), 131072, 26, 0, 0, ROMTYPE_AR2, 0, 1, NULL,
 	0x1287301f, 0xF6601DE8,0x888F0050,0x72BF562B,0x9F533BBC,0xAF1B0074 },
 	{ _T("Freezer: Action Replay Mk II v2.12"), 2, 12, 2, 12, _T("AR\0"), 131072, 27, 0, 0, ROMTYPE_AR2, 0, 1, NULL,
@@ -271,8 +271,8 @@ static struct romdata roms[] = {
 	0x49650e4f, 0x255D6DF6,0x3A4EAB0A,0x838EB1A1,0x6A267B09,0x59DFF634 },
 	{ _T("Freezer: Action Replay Mk III v3.09"), 3, 9, 3, 9, _T("AR\0"), 262144, 29, 0, 0, ROMTYPE_AR2, 0, 1, NULL,
 	0x0ed9b5aa, 0x0FF3170A,0xBBF0CA64,0xC9DD93D6,0xEC0C7A01,0xB5436824 },
-  ALTROM(29, 1, 1, 131072, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x2b84519f, 0x7841873b,0xf009d834,0x1dfa2794,0xb3751bac,0xf86adcc8)
-  ALTROM(29, 1, 2, 131072, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x1d35bd56, 0x6464be16,0x26b51949,0x9e76e4e3,0x409e8016,0x515d48b6)
+	ALTROM(29, 1, 1, 131072, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x2b84519f, 0x7841873b,0xf009d834,0x1dfa2794,0xb3751bac,0xf86adcc8)
+	ALTROM(29, 1, 2, 131072, ROMTYPE_ODD  | ROMTYPE_8BIT, 0x1d35bd56, 0x6464be16,0x26b51949,0x9e76e4e3,0x409e8016,0x515d48b6)
 	{ _T("Freezer: Action Replay Mk III v3.17"), 3, 17, 3, 17, _T("AR\0"), 262144, 30, 0, 0, ROMTYPE_AR2, 0, 1, NULL,
 	0xc8a16406, 0x5D4987C2,0xE3FFEA8B,0x1B02E314,0x30EF190F,0x2DB76542 },
 	{ _T("Freezer: Action Replay 1200"), 0, 0, 0, 0, _T("AR\0"), 262144, 47, 0, 0, ROMTYPE_AR, 0, 1, NULL,
@@ -284,23 +284,23 @@ static struct romdata roms[] = {
 	0xe668a0be, 0x633A6E65,0xA93580B8,0xDDB0BE9C,0x9A64D4A1,0x7D4B4801 },
 	{ _T("Freezer: X-Power Professional 500 v1.2"), 1, 2, 1, 2, _T("XPOWER\0"), 131072, 65, 0, 0, ROMTYPE_XPOWER, 0, 1, NULL,
 	0x9e70c231, 0xa2977a1c,0x41a8ca7d,0x4af4a168,0x726da542,0x179d5963 },
-  ALTROM(65, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xf98742e4,0xe8e683ba,0xd8b38d1f,0x79f3ad83,0xa9e67c6f,0xa91dc96c)
-  ALTROM(65, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xdfb9984b,0x8d6bdd49,0x469ec8e2,0x0143fbb3,0x72e92500,0x99f07910)
+	ALTROM(65, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xf98742e4,0xe8e683ba,0xd8b38d1f,0x79f3ad83,0xa9e67c6f,0xa91dc96c)
+	ALTROM(65, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xdfb9984b,0x8d6bdd49,0x469ec8e2,0x0143fbb3,0x72e92500,0x99f07910)
 	{ _T("Freezer: X-Power Professional 500 v1.3"), 1, 3, 1, 3, _T("XPOWER\0"), 131072, 68, 0, 0, ROMTYPE_XPOWER, 0, 1, NULL,
 	0x31e057f0, 0x84650266,0x465d1859,0x7fd71dee,0x00775930,0xb7e450ee },
-  ALTROM(68, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x0b2ce0c7,0x45ad5456,0x89192404,0x956f47ce,0xf66a5274,0x57ace33b)
-  ALTROM(68, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x34580c35,0x8ad42566,0x7364f238,0x978f4381,0x08f8d5ec,0x470e72ea)
+	ALTROM(68, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x0b2ce0c7,0x45ad5456,0x89192404,0x956f47ce,0xf66a5274,0x57ace33b)
+	ALTROM(68, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x34580c35,0x8ad42566,0x7364f238,0x978f4381,0x08f8d5ec,0x470e72ea)
 	{ _T("Freezer: Nordic Power v1.5"), 1, 5, 1, 5, _T("NPOWER\0"), 65536, 69, 0, 0, ROMTYPE_NORDIC, 0, 1, NULL,
 	0x83b4b21c, 0xc56ced25,0x506a5aab,0x3fa13813,0x4fc9e5ae,0x0f9d3709 },
-  ALTROM(69, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xdd207174,0xae67652d,0x64f5db20,0x0f4b2110,0xee59567f,0xfbd90a1b)
-  ALTROM(69, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x8f93d85d,0x73c62d21,0x40c0c092,0x6315b702,0xdd5d0f05,0x3dad7fab)
+	ALTROM(69, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xdd207174,0xae67652d,0x64f5db20,0x0f4b2110,0xee59567f,0xfbd90a1b)
+	ALTROM(69, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x8f93d85d,0x73c62d21,0x40c0c092,0x6315b702,0xdd5d0f05,0x3dad7fab)
 	{ _T("Freezer: Nordic Power v2.0"), 2, 0, 2, 0, _T("NPOWER\0"), 65536, 67, 0, 0, ROMTYPE_NORDIC, 0, 1, NULL,
 	0xa4db2906, 0x0aec68f7,0x25470c89,0x6b699ff4,0x6623dec5,0xc777466e },
-  ALTROM(67, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xb21be46c,0x50dc607c,0xce976bbd,0x3841eaf0,0x591ddc7e,0xa1939ad2)
-  ALTROM(67, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x96057aed,0xdd9209e2,0x1d5edfc1,0xcdb52abe,0x93de0f35,0xc43da696)
+	ALTROM(67, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xb21be46c,0x50dc607c,0xce976bbd,0x3841eaf0,0x591ddc7e,0xa1939ad2)
+	ALTROM(67, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0x96057aed,0xdd9209e2,0x1d5edfc1,0xcdb52abe,0x93de0f35,0xc43da696)
 	{ _T("Freezer: Nordic Power v3.0"), 3, 0, 3, 0, _T("NPOWER\0"), 65536, 70, 0, 0, ROMTYPE_NORDIC, 0, 1, NULL,
 	0x72850aef, 0x59c91d1f,0xa8f118f9,0x0bdba05a,0x9ae788d7,0x7a6cc7c9 },
-  ALTROM(70, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xf3330e1f,0x3a597db2,0xb7d11b6c,0xb8e13496,0xc215f223,0x88c4ca3c)
+	ALTROM(70, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xf3330e1f,0x3a597db2,0xb7d11b6c,0xb8e13496,0xc215f223,0x88c4ca3c)
 	ALTROM(70, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED|ROMTYPE_8BIT, 0xee58e0f9,0x4148f4cb,0xb42cec33,0x8ca144de,0xd4f54118,0xe0f185dd)
 	{ _T("Freezer: Nordic Power v3.2"), 3, 2, 3, 2, _T("NPOWER\0"), 65536, 115, 0, 0, ROMTYPE_NORDIC, 0, 1, NULL,
 	0x46158b6e, 0xd8c3f5af,0x5f109c61,0x5f6acb38,0x68fe6c06,0x580041b5 },
@@ -409,7 +409,7 @@ static struct romdata roms[] = {
 	0x00447765, 0x2644e7cb,0xba5cc54e,0x880b4b42,0x49fd1dd1,0x2eb4a3bc, NULL, _T("fastlanez3.rom") },
 	{ _T("Oktagon 2008"), 6, 12, 6, 12, _T("OKTAGON\0"), 32768, 103, 0, 0, ROMTYPE_OKTAGON, 0, 0, NULL,
 	0xbb0d2f6a, 0x56c441fa,0x37d19339,0x3081b2e8,0xceae823b,0xc7e97e49, NULL, _T("oktagon2008.rom") },
-	{ _T("Warp Engine A4000"), 0, 0, 0, 0, _T("WARPENGINE\0WARPENGINEA4000\0"), 32768, 93, 0, 0, ROMTYPE_CB_WENGINE, 0, 0, NULL,
+	{ _T("Warp Engine"), 0, 0, 0, 0, _T("WARPENGINE\0"), 32768, 93, 0, 0, ROMTYPE_CB_WENGINE, 0, 0, NULL,
 	0x4deb574a, 0x6e6c95ff,0xe8448391,0xd36c5b68,0xc9065cb0,0x702a7d27 },
 	{ _T("TekMagic 2040/2060"), 1, 0, 1, 0, _T("TEKMAGIC\0TEKMAGIC2040\0TEKMAGIC2060\0"), 65536, 104, 0, 0, ROMTYPE_CB_TEKMAGIC, 0, 0, NULL,
 	0x9e9781d5, 0xf65b60d1,0x4300c50f,0x2ed17cf4,0x4dcfdef9,0x16697bc9, NULL,  _T("tekmagic2060.rom") },
@@ -620,7 +620,7 @@ static struct romdata roms[] = {
 	0xc5ae45d4, 0x8d682bc1,0x72bd2d35,0x4ba2db5c,0x9f6745a4,0x8937782c, NULL, NULL },
 	{ _T("C-Ltd Kronos"), 1, 0, 1, 0, _T("KRONOS\0"), 8192, 235, 0, 0, ROMTYPE_KRONOS, 0, 0, NULL,
 	0x9366d357, 0x7113add0,0x4c782ed7,0xa56a74ba,0x3378d55c,0x5605eaf6, NULL, NULL },
-	{ _T("AccessX 500 v2.1"), 2, 1, 2, 1, _T("ACCESSX\0"), 32768, 242, 0, 0, ROMTYPE_ACCESSX, 0, 0, NULL,
+	{ _T("AccessX 500 v2.1"), 2, 1, 2, 1, _T("ACCESSX500\0"), 32768, 242, 0, 0, ROMTYPE_ACCESSX, 0, 0, NULL,
 	0x039a14a7, 0x1a710b94, 0xcc1bd217, 0xb0c310af, 0x4b0f6d0a, 0x1125b05a, NULL, NULL },
 	{ _T("AccessX 500 v2.1 (descrambled)"), 2, 1, 2, 1, _T("ACCESSX\0"), 32768, 243, 0, 0, ROMTYPE_ACCESSX, 0, 0, NULL,
 	0x415a5cae, 0x15c8c15f, 0x3700e867, 0xd1dbe2ee, 0xcbb7c7cd, 0x245555fa, NULL, NULL },
@@ -678,9 +678,9 @@ static struct romdata roms[] = {
 
 	{ _T("Arcadia OnePlay 2.11"), 2, 11, 0, 0, _T("ARCADIA\0"), 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 	{ _T("Arcadia TenPlay 2.11"), 2, 11, 0, 0, _T("ARCADIA\0"), 0, 50, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 2.20"), 2, 20, 0, 0, _T("ARCADIA\0"), 0, 75, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia OnePlay 2.20"), 2, 20, 0, 0, _T("ARCADIA\0"), 0, 75, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 	{ _T("Arcadia OnePlay 3.00"), 3, 0, 0, 0, _T("ARCADIA\0"), 0, 51, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 3.11"), 3, 11, 0, 0, _T("ARCADIA\0"), 0, 76, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia TenPlay 3.10"), 3, 10, 0, 0, _T("ARCADIA\0"), 0, 76, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 	{ _T("Arcadia TenPlay 4.00"), 4, 0, 0, 0, _T("ARCADIA\0"), 0, 77, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 
 	{ _T("Arcadia SportTime Table Hockey v2.1"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 33, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
@@ -828,7 +828,7 @@ static struct romdata roms[] = {
 	ALTROMPN(198, 1, 1, 65536, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0xf59cfc4a, 0x9fadf7f1,0xe23d6b4e,0x828bf2b3,0xde919d08,0x7c690a3f)
 	ALTROMPN(198, 1, 2, 65536, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0x938b25cb, 0xd0114bbc,0x588dcfce,0x6a469013,0xd0e35afb,0x93e38af5)
 
-  { NULL }
+	{ NULL }
 
 };
 
@@ -847,81 +847,75 @@ void dumpromlist(void)
 
 void romlist_clear (void)
 {
-  int i;
-  int mask = 0;
-  struct romdata *parent;
+	int i;
+	int mask = 0;
+	struct romdata *parent;
 	const TCHAR *pn;
 
-  xfree (rl);
-  rl = 0;
-  romlist_cnt = 0;
-  parent = 0;
-  pn = NULL;
-  for (i = 0; roms[i].name; i++) {
-  	struct romdata *rd = &roms[i];
-  	if (rd->group == 0) {
-	    parent = rd;
-	    mask = rd->type;
-	    pn = parent->partnumber;
-  	} else {
-	    rd->type &= ~ROMTYPE_MASK;
-	    rd->type |= mask & ROMTYPE_MASK;
-	    if (rd->partnumber && !pn) {
-    		TCHAR *newpn;
-    		if (parent->partnumber == NULL)
+	xfree (rl);
+	rl = 0;
+	romlist_cnt = 0;
+	parent = 0;
+	pn = NULL;
+	for (i = 0; roms[i].name; i++) {
+		struct romdata *rd = &roms[i];
+		if (rd->group == 0) {
+			parent = rd;
+			mask = rd->type;
+			pn = parent->partnumber;
+		} else {
+			rd->type &= ~ROMTYPE_MASK;
+			rd->type |= mask & ROMTYPE_MASK;
+			if (rd->partnumber && !pn) {
+				TCHAR *newpn;
+				if (parent->partnumber == NULL)
 					parent->partnumber = my_strdup (_T(""));
-    		newpn = xcalloc (TCHAR, _tcslen (parent->partnumber) + 1 + _tcslen (rd->partnumber) + 1);
-    		if (_tcslen (parent->partnumber) > 0) {
-  		    _tcscpy (newpn, parent->partnumber);
+				newpn = xcalloc (TCHAR, _tcslen (parent->partnumber) + 1 + _tcslen (rd->partnumber) + 1);
+				if (_tcslen (parent->partnumber) > 0) {
+					_tcscpy (newpn, parent->partnumber);
 					_tcscat (newpn, _T("/"));
-    		}
-    		_tcscat (newpn, rd->partnumber);
+				}
+				_tcscat (newpn, rd->partnumber);
 				xfree ((char *) parent->partnumber);
-    		parent->partnumber = newpn;
-	    }
-  	}
-  }
+				parent->partnumber = newpn;
+			}
+		}
+	}
 }
 
 /* remove rom entries that need 2 or more roms but not everything required is present */
 static void romlist_cleanup (void)
 {
-  int i = 0;
-  while (roms[i].name) {
-  	struct romdata *rd = &roms[i];
-  	int grp = rd->group >> 16;
-    int ok = 1;
-  	int j = i;
-  	int k = i;
-  	while (rd->name && (rd->group >> 16) == grp && grp > 0) {
-	    struct romlist *rl = romlist_getrl (rd);
-	    if (!rl)
-    		ok = 0;
-	    rd++;
-	    j++;
-  	}
-  	if (ok == 0) {
-	    while (i < j) {
-    		struct romlist *rl2 = romlist_getrl (&roms[i]);
-    		if (rl2) {
-  		    int cnt = romlist_cnt - (rl2 - rl) - 1;
+	int i = 0;
+	while (roms[i].name) {
+		struct romdata *rd = &roms[i];
+		int grp = rd->group >> 16;
+		int ok = 1;
+		int j = i;
+		int k = i;
+		while (rd->name && (rd->group >> 16) == grp && grp > 0) {
+			struct romlist *rl = romlist_getrl (rd);
+			if (!rl)
+				ok = 0;
+			rd++;
+			j++;
+		}
+		if (ok == 0) {
+			while (i < j) {
+				struct romlist *rl2 = romlist_getrl (&roms[i]);
+				if (rl2) {
+					int cnt = romlist_cnt - (rl2 - rl) - 1;
 					write_log (_T("%s '%s' removed from romlist\n"), roms[k].name, rl2->path);
-  		    xfree (rl2->path);
-  		    if (cnt > 0)
-      			memmove (rl2, rl2 + 1, cnt * sizeof (struct romlist));
-  		    romlist_cnt--;
-    		}
-    		i++;
-	    }
-  	}
-  	i++;
-  }
-#if 0
-	for (i = 0; i < romlist_cnt; i++) {
-		struct romlist *rll = &rl[i];
-		write_log (_T("%d: %08x %s (%s)\n"), rll->rd->id, rll->rd->group, rll->rd->name, rll->path);
+					xfree (rl2->path);
+					if (cnt > 0)
+						memmove (rl2, rl2 + 1, cnt * sizeof (struct romlist));
+					romlist_cnt--;
+				}
+				i++;
+			}
+		}
+		i++;
 	}
-#endif
 }
 
 struct romlist **getromlistbyident (int ver, int rev, int subver, int subrev, const TCHAR *model, int romflags, bool all)
@@ -1050,16 +1044,16 @@ struct romlist **getarcadiaroms (void)
 
 static int kickstart_checksum_do (uae_u8 *mem, int size)
 {
-  uae_u32 cksum = 0, prevck = 0;
-  int i;
-  for (i = 0; i < size; i+=4) {
-  	uae_u32 data = mem[i]*65536*256 + mem[i+1]*65536 + mem[i+2]*256 + mem[i+3];
-  	cksum += data;
-  	if (cksum < prevck)
-	    cksum++;
-  	prevck = cksum;
-  }
-  return cksum == 0xffffffff;
+	uae_u32 cksum = 0, prevck = 0;
+	int i;
+	for (i = 0; i < size; i += 4) {
+		uae_u32 data = mem[i] * 65536 * 256 + mem[i + 1] * 65536 + mem[i + 2] * 256 + mem[i + 3];
+		cksum += data;
+		if (cksum < prevck)
+			cksum++;
+		prevck = cksum;
+	}
+	return cksum == 0xffffffff;
 }
 
 static int kickstart_checksum_more_do (uae_u8 *mem, int size)
@@ -1082,186 +1076,186 @@ static int kickstart_checksum_more_do (uae_u8 *mem, int size)
 
 #define ROM_KEY_NUM 4
 struct rom_key {
-  uae_u8 *key;
-  int size;
+	uae_u8 *key;
+	int size;
 };
 
 static struct rom_key keyring[ROM_KEY_NUM];
 
 static void addkey (uae_u8 *key, int size, const TCHAR *name)
 {
-  int i;
+	int i;
 
 	//write_log (_T("addkey(%08x,%d,'%s')\n"), key, size, name);
-  if (key == NULL || size == 0) {
-  	xfree (key);
-  	return;
-  }
-  for (i = 0; i < ROM_KEY_NUM; i++) {
-  	if (keyring[i].key && keyring[i].size == size && !memcmp (keyring[i].key, key, size)) {
-	    xfree (key);
+	if (key == NULL || size == 0) {
+		xfree (key);
+		return;
+	}
+	for (i = 0; i < ROM_KEY_NUM; i++) {
+		if (keyring[i].key && keyring[i].size == size && !memcmp (keyring[i].key, key, size)) {
+			xfree (key);
 			//write_log (_T("key already in keyring\n"));
-	    return;
-  	}
-  }
-  for (i = 0; i < ROM_KEY_NUM; i++) {
-  	if (keyring[i].key == NULL)
-	    break;
-  }
-  if (i == ROM_KEY_NUM) {
-  	xfree (key);
+			return;
+		}
+	}
+	for (i = 0; i < ROM_KEY_NUM; i++) {
+		if (keyring[i].key == NULL)
+			break;
+	}
+	if (i == ROM_KEY_NUM) {
+		xfree (key);
 		//write_log (_T("keyring full\n"));
-  	return;
-  }
-  keyring[i].key = key;
-  keyring[i].size = size;
+		return;
+	}
+	keyring[i].key = key;
+	keyring[i].size = size;
 }
 
 void addkeyfile (const TCHAR *path)
 {
-  struct zfile *f;
-  int keysize;
-  uae_u8 *keybuf;
+	struct zfile *f;
+	int keysize;
+	uae_u8 *keybuf;
 
 	f = zfile_fopen (path, _T("rb"), ZFD_NORMAL);
-  if (!f)
-  	return;
-  zfile_fseek (f, 0, SEEK_END);
-  keysize = zfile_ftell (f);
-  if (keysize > 0) {
-    zfile_fseek (f, 0, SEEK_SET);
-    keybuf = xmalloc (uae_u8, keysize);
-    zfile_fread (keybuf, 1, keysize, f);
-    addkey (keybuf, keysize, path);
-  }
-  zfile_fclose (f);
+	if (!f)
+		return;
+	zfile_fseek (f, 0, SEEK_END);
+	keysize = zfile_ftell (f);
+	if (keysize > 0) {
+		zfile_fseek (f, 0, SEEK_SET);
+		keybuf = xmalloc (uae_u8, keysize);
+		zfile_fread (keybuf, 1, keysize, f);
+		addkey (keybuf, keysize, path);
+	}
+	zfile_fclose (f);
 }
 
 void addkeydir (const TCHAR *path)
 {
-  TCHAR tmp[MAX_DPATH];
+	TCHAR tmp[MAX_DPATH];
 
-  _tcscpy (tmp, path);
-  if (zfile_exists (tmp)) {
-    int i;
-    for (i = _tcslen (tmp) - 1; i > 0; i--) {
-	    if (tmp[i] == '\\' || tmp[i] == '/')
-        break;
-  	}
-  	tmp[i] = 0;
-  }
+	_tcscpy (tmp, path);
+	if (zfile_exists (tmp)) {
+		int i;
+		for (i = _tcslen (tmp) - 1; i > 0; i--) {
+			if (tmp[i] == '\\' || tmp[i] == '/')
+				break;
+		}
+		tmp[i] = 0;
+	}
 	_tcscat (tmp, _T("/"));
 	_tcscat (tmp, _T("rom.key"));
-  addkeyfile (tmp);
+	addkeyfile (tmp);
 }
 
 int get_keyring (void)
 {
-  int i, num = 0;
-  for (i = 0; i < ROM_KEY_NUM; i++) {
-  	if (keyring[i].key)
-	    num++;
-  }
-  return num;
+	int i, num = 0;
+	for (i = 0; i < ROM_KEY_NUM; i++) {
+		if (keyring[i].key)
+			num++;
+	}
+	return num;
 }
 
 int load_keyring (struct uae_prefs *p, const TCHAR *path)
 {
-  uae_u8 *keybuf;
-  int keysize;
-  TCHAR tmp[MAX_DPATH], *d;
-  int keyids[] = { 0, 48, 73, -1 };
-  int cnt, i;
+	uae_u8 *keybuf;
+	int keysize;
+	TCHAR tmp[MAX_DPATH], *d;
+	int keyids[] = { 0, 48, 73, -1 };
+	int cnt, i;
 
-  free_keyring();
-  keybuf = target_load_keyfile(p, path, &keysize, tmp);
-  addkey (keybuf, keysize, tmp);
-  for (i = 0; keyids[i] >= 0; i++) {
-  	struct romdata *rd = getromdatabyid (keyids[i]);
-  	TCHAR *s;
-  	if (rd) {
-	    s = romlist_get (rd);
-	    if (s)
-    		addkeyfile (s);
-  	}
-  }
+	free_keyring ();
+	keybuf = target_load_keyfile (p, path, &keysize, tmp);
+	addkey (keybuf, keysize, tmp);
+	for (i = 0; keyids[i] >= 0; i++) {
+		struct romdata *rd = getromdatabyid (keyids[i]);
+		TCHAR *s;
+		if (rd) {
+			s = romlist_get (rd);
+			if (s)
+				addkeyfile (s);
+		}
+	}
 
-  cnt = 0;
-  for (;;) {
-  	keybuf = NULL;
-  	keysize = 0;
-  	tmp[0] = 0;
-  	switch (cnt)
-  	{
+	cnt = 0;
+	for (;;) {
+		keybuf = NULL;
+		keysize = 0;
+		tmp[0] = 0;
+		switch (cnt)
+		{
 		case 0:
 			if (path)
-      {
 				_tcscpy (tmp, path);
-  	    _tcscat (tmp, _T("rom.key"));
-  	  }
 			break;
 		case 1:
-	    if (p) {
-    		_tcscpy (tmp, p->path_rom);
-    		_tcscat (tmp, _T("rom.key"));
-	    }
-    	break;
-	  case 2:
-	    _tcscpy (tmp, _T("roms/rom.key"));
-    	break;
-  	case 3:
-	    _tcscpy (tmp, start_path_data);
-	    _tcscat (tmp, _T("rom.key"));
-    	break;
-  	case 4:
-	    _stprintf (tmp, _T("%s../shared/rom/rom.key"), start_path_data);
-    	break;
-  	case 5:
-	    if (p) {
-    		for (i = 0; uae_archive_extensions[i]; i++) {
-  		    if (_tcsstr (p->romfile, uae_archive_extensions[i]))
-      			break;
-    		}
-    		if (!uae_archive_extensions[i]) {
-  		    _tcscpy (tmp, p->romfile);
-  		    d = _tcsrchr (tmp, '/');
-  		    if (!d)
-      			d = _tcsrchr (tmp, '\\');
-  		    if (d)
-    			_tcscpy (d + 1, _T("rom.key"));
-    		}
-	    }
-	    break;
-	  case 6:
-	    return get_keyring ();
-  	}
-  	cnt++;
-  	if (!tmp[0])
-      continue;
-  	addkeyfile (tmp);
-  }
+			_tcscat (tmp, _T("rom.key"));
+			break;
+		case 2:
+			if (p) {
+				_tcscpy (tmp, p->path_rom.path[0]);
+				_tcscat (tmp, _T("rom.key"));
+			}
+			break;
+		case 3:
+			_tcscpy (tmp, _T("roms/rom.key"));
+			break;
+		case 4:
+			_tcscpy (tmp, start_path_data);
+			_tcscat (tmp, _T("rom.key"));
+			break;
+		case 5:
+			_stprintf (tmp, _T("%s../shared/rom/rom.key"), start_path_data);
+			break;
+		case 6:
+			if (p) {
+				for (i = 0; uae_archive_extensions[i]; i++) {
+					if (_tcsstr (p->romfile, uae_archive_extensions[i]))
+						break;
+				}
+				if (!uae_archive_extensions[i]) {
+					_tcscpy (tmp, p->romfile);
+					d = _tcsrchr (tmp, '/');
+					if (!d)
+						d = _tcsrchr (tmp, '\\');
+					if (d)
+						_tcscpy (d + 1, _T("rom.key"));
+				}
+			}
+			break;
+		case 7:
+			return get_keyring ();
+		}
+		cnt++;
+		if (!tmp[0])
+			continue;
+		addkeyfile (tmp);
+	}
 }
 void free_keyring (void)
 {
-  int i;
-  for (i = 0; i < ROM_KEY_NUM; i++)
-  	xfree (keyring[i].key);
-  memset(keyring, 0, sizeof (struct rom_key) * ROM_KEY_NUM);
+	int i;
+	for (i = 0; i < ROM_KEY_NUM; i++)
+		xfree (keyring[i].key);
+	memset (keyring, 0, sizeof (struct rom_key) * ROM_KEY_NUM);
 }
 
 struct romdata *getromdatabyname (const TCHAR *name)
 {
-  TCHAR tmp[MAX_DPATH];
-  int i = 0;
-  while (roms[i].name) {
-    if (!roms[i].group) {
-      getromname (&roms[i], tmp);
-      if (!_tcscmp (tmp, name) || !_tcscmp (roms[i].name, name))
-        return &roms[i];
-    }
-    i++;
-  }
-  return 0;
+	TCHAR tmp[MAX_DPATH];
+	int i = 0;
+	while (roms[i].name) {
+		if (!roms[i].group) {
+			getromname (&roms[i], tmp);
+			if (!_tcscmp (tmp, name) || !_tcscmp (roms[i].name, name))
+				return &roms[i];
+		}
+		i++;
+	}
+	return 0;
 }
 
 struct romdata *getromdatabytype (int romtype)
@@ -1277,41 +1271,41 @@ struct romdata *getromdatabytype (int romtype)
 
 struct romdata *getromdatabyid (int id)
 {
-  int i = 0;
-  while (roms[i].name) {
-  	if (id == roms[i].id && roms[i].group == 0)
-	    return &roms[i];
-  	i++;
-  }
-  return 0;
+	int i = 0;
+	while (roms[i].name) {
+		if (id == roms[i].id && roms[i].group == 0)
+			return &roms[i];
+		i++;
+	}
+	return 0;
 }
 
 struct romdata *getromdatabyidgroup (int id, int group, int subitem)
 {
-  int i = 0;
-  group = (group << 16) | subitem;
-  while (roms[i].name) {
-  	if (id == roms[i].id && roms[i].group == group)
-	    return &roms[i];
-  	i++;
-  }
-  return 0;
+	int i = 0;
+	group = (group << 16) | subitem;
+	while (roms[i].name) {
+		if (id == roms[i].id && roms[i].group == group)
+			return &roms[i];
+		i++;
+	}
+	return 0;
 }
 
-STATIC_INLINE int notcrc32(uae_u32 crc32)
+STATIC_INLINE int notcrc32 (uae_u32 crc32)
 {
-  if (crc32 == 0xffffffff || crc32 == 0x00000000)
-  	return 1;
-  return 0;
+	if (crc32 == 0xffffffff || crc32 == 0x00000000)
+		return 1;
+	return 0;
 }
 
 struct romdata *getromdatabycrc (uae_u32 crc32, bool allowgroup)
 {
-  int i = 0;
-  while (roms[i].name) {
-  	if (roms[i].group == 0 && crc32 == roms[i].crc32 && !notcrc32(crc32))
-	    return &roms[i];
-  	i++;
+	int i = 0;
+	while (roms[i].name) {
+		if (roms[i].group == 0 && crc32 == roms[i].crc32 && !notcrc32(crc32))
+			return &roms[i];
+		i++;
 	}
 	if (allowgroup) {
 		i = 0;
@@ -1320,8 +1314,8 @@ struct romdata *getromdatabycrc (uae_u32 crc32, bool allowgroup)
 				return &roms[i];
 			i++;
 		}
-  }
-  return 0;
+	}
+	return 0;
 }
 struct romdata *getromdatabycrc (uae_u32 crc32)
 {
@@ -1330,16 +1324,16 @@ struct romdata *getromdatabycrc (uae_u32 crc32)
 
 static int cmpsha1 (const uae_u8 *s1, const struct romdata *rd)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < SHA1_SIZE / 4; i++) {
-  	uae_u32 v1 = (s1[0] << 24) | (s1[1] << 16) | (s1[2] << 8) | (s1[3] << 0);
-  	uae_u32 v2 = rd->sha1[i];
-  	if (v1 != v2)
-	    return -1;
-  	s1 += 4;
-  }
-  return 0;
+	for (i = 0; i < SHA1_SIZE / 4; i++) {
+		uae_u32 v1 = (s1[0] << 24) | (s1[1] << 16) | (s1[2] << 8) | (s1[3] << 0);
+		uae_u32 v2 = rd->sha1[i];
+		if (v1 != v2)
+			return -1;
+		s1 += 4;
+	}
+	return 0;
 }
 
 struct romdata *getfrombydefaultname(const TCHAR *name, int size)
@@ -1356,183 +1350,171 @@ struct romdata *getfrombydefaultname(const TCHAR *name, int size)
 
 static struct romdata *checkromdata (const uae_u8 *sha1, int size, uae_u32 mask)
 {
-  int i = 0;
-  while (roms[i].name) {
-  	if (!notcrc32(roms[i].crc32) && roms[i].size >= size) {
-	    if (roms[i].type & mask) {
-    		if (!cmpsha1(sha1, &roms[i]))
-  		    return &roms[i];
-	    }
-  	}
-  	i++;
-  }
-  return NULL;
+	int i = 0;
+	while (roms[i].name) {
+		if (!notcrc32(roms[i].crc32) && roms[i].size >= size) {
+			if (roms[i].type & mask) {
+				if (!cmpsha1 (sha1, &roms[i]))
+					return &roms[i];
+			}
+		}
+		i++;
+	}
+	return NULL;
 }
 
 int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size)
 {
-  int cnt, t, i;
+	int cnt, t, i;
 
-  for (i = ROM_KEY_NUM - 1; i >= 0; i--) {
-  	uae_u8 sha1[SHA1_SIZE];
-  	struct romdata *rd;
-  	int keysize = keyring[i].size;
-  	uae_u8 *key = keyring[i].key;
-  	if (!key)
-	    continue;
-    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
-      mem[cnt] ^= key[t];
-      if (real_size == cnt + 1)
-  	    t = keysize - 1;
-    }
-  	if ((mem[2] == 0x4e && mem[3] == 0xf9) || (mem[0] == 0x11 && (mem[1] == 0x11 || mem[1] == 0x14))) {
-	    cloanto_rom = 1;
-	    return 1;
-  	}
-  	get_sha1 (mem, size, sha1);
-  	rd = checkromdata (sha1, size, -1);
-  	if (rd) {
-	    if (rd->cloanto)
-    		cloanto_rom = 1;
-	    return 1;
-  	}
-  	if (i == 0)
-	    break;
-  	for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
-	    mem[cnt] ^= key[t];
-	    if (real_size == cnt + 1)
-    		t = keysize - 1;
-  	}
-  }
-  return 0;
+	for (i = ROM_KEY_NUM - 1; i >= 0; i--) {
+		uae_u8 sha1[SHA1_SIZE];
+		struct romdata *rd;
+		int keysize = keyring[i].size;
+		uae_u8 *key = keyring[i].key;
+		if (!key)
+			continue;
+		for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
+			mem[cnt] ^= key[t];
+			if (real_size == cnt + 1)
+				t = keysize - 1;
+		}
+		if ((mem[2] == 0x4e && mem[3] == 0xf9) || (mem[0] == 0x11 && (mem[1] == 0x11 || mem[1] == 0x14))) {
+			cloanto_rom = 1;
+			return 1;
+		}
+		get_sha1 (mem, size, sha1);
+		rd = checkromdata (sha1, size, -1);
+		if (rd) {
+			if (rd->cloanto)
+				cloanto_rom = 1;
+			return 1;
+		}
+		if (i == 0)
+			break;
+		for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
+			mem[cnt] ^= key[t];
+			if (real_size == cnt + 1)
+				t = keysize - 1;
+		}
+	}
+	return 0;
 }
 
 static int decode_rekick_rom_do (uae_u8 *mem, int size, int real_size)
 {
-  uae_u32 d1 = 0xdeadfeed, d0;
-  int i;
+	uae_u32 d1 = 0xdeadfeed, d0;
+	int i;
 
-  for (i = 0; i < size / 8; i++) {
-  	d0 = ((mem[i * 8 + 0] << 24) | (mem[i * 8 + 1] << 16) | (mem[i * 8 + 2] << 8) | mem[i * 8 + 3]);
-  	d1 = d1 ^ d0;
-  	mem[i * 8 + 0] = d1 >> 24;
-  	mem[i * 8 + 1] = d1 >> 16;
-  	mem[i * 8 + 2] = d1 >> 8;
-  	mem[i * 8 + 3] = d1;
-  	d1 = ((mem[i * 8 + 4] << 24) | (mem[i * 8 + 5] << 16) | (mem[i * 8 + 6] << 8) | mem[i * 8 + 7]);
-  	d0 = d0 ^ d1;
-  	mem[i * 8 + 4] = d0 >> 24;
-  	mem[i * 8 + 5] = d0 >> 16;
-  	mem[i * 8 + 6] = d0 >> 8;
-  	mem[i * 8 + 7] = d0;
-  }
-  return 1;
+	for (i = 0; i < size / 8; i++) {
+		d0 = ((mem[i * 8 + 0] << 24) | (mem[i * 8 + 1] << 16) | (mem[i * 8 + 2] << 8) | mem[i * 8 + 3]);
+		d1 = d1 ^ d0;
+		mem[i * 8 + 0] = d1 >> 24;
+		mem[i * 8 + 1] = d1 >> 16;
+		mem[i * 8 + 2] = d1 >> 8;
+		mem[i * 8 + 3] = d1;
+		d1 = ((mem[i * 8 + 4] << 24) | (mem[i * 8 + 5] << 16) | (mem[i * 8 + 6] << 8) | mem[i * 8 + 7]);
+		d0 = d0 ^ d1;
+		mem[i * 8 + 4] = d0 >> 24;
+		mem[i * 8 + 5] = d0 >> 16;
+		mem[i * 8 + 6] = d0 >> 8;
+		mem[i * 8 + 7] = d0;
+	}
+	return 1;
 }
 
 int decode_rom (uae_u8 *mem, int size, int mode, int real_size)
 {
-  if (mode == 1) {
-	  if (!decode_cloanto_rom_do (mem, size, real_size)) {
-#ifndef SINGLEFILE
-    	notify_user (NUMSG_NOROMKEY);
-#endif
-    	return 0;
-    }
-    return 1;
-  } else if (mode == 2) {
-  	decode_rekick_rom_do (mem, size, real_size);
-  	return 1;
-  }
-  return 0;
+	if (mode == 1) {
+		if (!decode_cloanto_rom_do (mem, size, real_size)) {
+			notify_user (NUMSG_NOROMKEY);
+			return 0;
+		}
+		return 1;
+	} else if (mode == 2) {
+		decode_rekick_rom_do (mem, size, real_size);
+		return 1;
+	}
+	return 0;
 }
 
 struct romdata *getromdatabydata (uae_u8 *rom, int size)
 {
-  uae_u8 sha1[SHA1_SIZE];
-  uae_u8 tmp[4];
-  uae_u8 *tmpbuf = NULL;
-  struct romdata *ret = NULL;
+	uae_u8 sha1[SHA1_SIZE];
+	uae_u8 tmp[4];
+	uae_u8 *tmpbuf = NULL;
+	struct romdata *ret = NULL;
 
-  if (size > 11 && !memcmp (rom, "AMIROMTYPE1", 11)) {
-  	uae_u8 *tmpbuf = xmalloc (uae_u8, size);
-  	int tmpsize = size - 11;
-  	memcpy (tmpbuf, rom + 11, tmpsize);
-  	decode_rom (tmpbuf, tmpsize, 1, tmpsize);
-  	rom = tmpbuf;
-  	size = tmpsize;
-  }
-#if 0
-	if (size > 0x6c + 524288 && !memcmp (rom, "AMIG", 4)) {
-		uae_u8 *tmpbuf = (uae_u8*)xmalloc (uae_u8, size);
-		int tmpsize = size - 0x6c;
-		memcpy (tmpbuf, rom + 0x6c, tmpsize);
-		decode_rom (tmpbuf, tmpsize, 2, tmpsize);
+	if (size > 11 && !memcmp (rom, "AMIROMTYPE1", 11)) {
+		uae_u8 *tmpbuf = xmalloc (uae_u8, size);
+		int tmpsize = size - 11;
+		memcpy (tmpbuf, rom + 11, tmpsize);
+		decode_rom (tmpbuf, tmpsize, 1, tmpsize);
 		rom = tmpbuf;
 		size = tmpsize;
 	}
-#endif
-  get_sha1 (rom, size, sha1);
-  ret = checkromdata(sha1, size, -1);
-  if (!ret) {
-  	get_sha1 (rom, size / 2, sha1);
-  	ret = checkromdata (sha1, size / 2, -1);
-  	if (!ret) {
+	get_sha1 (rom, size, sha1);
+	ret = checkromdata(sha1, size, -1);
+	if (!ret) {
+		get_sha1 (rom, size / 2, sha1);
+		ret = checkromdata (sha1, size / 2, -1);
+		if (!ret) {
 			/* ignore AR2/3 IO-port range until we have full dump */
-	    memcpy (tmp, rom, 4);
-	    memset (rom, 0, 4);
-	    get_sha1 (rom, size, sha1);
+			memcpy (tmp, rom, 4);
+			memset (rom, 0, 4);
+			get_sha1 (rom, size, sha1);
 			ret = checkromdata (sha1, size, ROMTYPE_AR2);
-	    memcpy (rom, tmp, 4);
-  	}
+			memcpy (rom, tmp, 4);
+		}
 	}//9 
-  xfree (tmpbuf);
-  return ret;
+	xfree (tmpbuf);
+	return ret;
 }
 
 struct romdata *getromdatabyzfile (struct zfile *f)
 {
-  int pos, size;
-  uae_u8 *p;
-  struct romdata *rd;
+	int pos, size;
+	uae_u8 *p;
+	struct romdata *rd;
 
-  pos = zfile_ftell (f);
-  zfile_fseek (f, 0, SEEK_END);
-  size = zfile_ftell (f);
+	pos = zfile_ftell (f);
+	zfile_fseek (f, 0, SEEK_END);
+	size = zfile_ftell (f);
 	if (size > 2048 * 1024)
 		return NULL;
-  p = xmalloc (uae_u8, size);
-  if (!p)
-  	return NULL;
-  memset (p, 0, size);
-  zfile_fseek (f, 0, SEEK_SET);
-  zfile_fread (p, 1, size, f);
-  zfile_fseek (f, pos, SEEK_SET);        
-  rd = getromdatabydata (p, size);
-  xfree (p);
-  return rd;
+	p = xmalloc (uae_u8, size);
+	if (!p)
+		return NULL;
+	memset (p, 0, size);
+	zfile_fseek (f, 0, SEEK_SET);
+	zfile_fread (p, 1, size, f);
+	zfile_fseek (f, pos, SEEK_SET);
+	rd = getromdatabydata (p, size);
+	xfree (p);
+	return rd;
 }
 
 void getromname	(const struct romdata *rd, TCHAR *name)
 {
-  name[0] = 0;
-  if (!rd)
-    return;
-  while (rd->group)
-  	rd--;
-  _tcscat (name, rd->name);
-  if ((rd->subrev || rd->subver) && rd->subver != rd->ver)
+	name[0] = 0;
+	if (!rd)
+		return;
+	while (rd->group)
+		rd--;
+	_tcscat (name, rd->name);
+	if ((rd->subrev || rd->subver) && rd->subver != rd->ver)
 		_stprintf (name + _tcslen (name), _T(" rev %d.%d"), rd->subver, rd->subrev);
-  if (rd->size > 0)
+	if (rd->size > 0)
 		_stprintf (name + _tcslen (name), _T(" (%dk)"), (rd->size + 1023) / 1024);
-  if (rd->partnumber && _tcslen (rd->partnumber) > 0)
+	if (rd->partnumber && _tcslen (rd->partnumber) > 0)
 		_stprintf (name + _tcslen (name), _T(" [%s]"), rd->partnumber);
 }
 
 struct romlist *getromlistbyromdata (const struct romdata *rd)
 {
-  int ids[2];
-  
-  ids[0] = rd->id;
+	int ids[2];
+
+	ids[0] = rd->id;
 	ids[1] = -1;
 	return getromlistbyids(ids, NULL);
 }
@@ -1547,7 +1529,7 @@ struct romlist *getromlistbyromtype(uae_u32 romtype, const TCHAR *romname)
 				if (rl[j].rd->id == rd->id) {
 					if (romname) {
 						if (my_issamepath(rl[j].path, romname))
-					    return &rl[j];
+							return &rl[j];
 					} else {
 						return &rl[j];
 					}
@@ -1561,8 +1543,8 @@ struct romlist *getromlistbyromtype(uae_u32 romtype, const TCHAR *romname)
 
 struct romlist *getromlistbyids (const int *ids, const TCHAR *romname)
 {
-  struct romdata *rd;
-  int i, j;
+	struct romdata *rd;
+	int i, j;
 
 	i = 0;
 	if (romname) {
@@ -1579,20 +1561,21 @@ struct romlist *getromlistbyids (const int *ids, const TCHAR *romname)
 			i++;
 		}
 	}
-  i = 0;
-  while (ids[i] >= 0) {
-  	rd = getromdatabyid (ids[i]);
-  	if (rd) {
-	    for (j = 0; j < romlist_cnt; j++) {
-    		if (rl[j].rd->id == rd->id)
-  		    return &rl[j];
-	    }
-  	}
-  	i++;
-  }
-  return NULL;
+	i = 0;
+	while (ids[i] >= 0) {
+		rd = getromdatabyid (ids[i]);
+		if (rd) {
+			for (j = 0; j < romlist_cnt; j++) {
+				if (rl[j].rd->id == rd->id)
+					return &rl[j];
+			}
+		}
+		i++;
+	}
+	return NULL;
 }
 
+static
 struct romdata *getromdatabyids (const int *ids)
 {
 	struct romdata *rd;
@@ -1649,15 +1632,15 @@ void romwarning (const int *ids)
 	while (ids[i] >= 0) {
 		struct romdata *rd = getromdatabyid (ids[i]);
 		if (!(rd->type & ROMTYPE_NONE)) {
-		  getromname (rd, tmp1);
-		  _tcscat (tmp2, _T("- "));
-		  _tcscat (tmp2, tmp1);
-		  _tcscat (tmp2, _T("\n"));
+			getromname (rd, tmp1);
+			_tcscat (tmp2, _T("- "));
+			_tcscat (tmp2, tmp1);
+			_tcscat (tmp2, _T("\n"));
 			if (rd->type & (ROMTYPE_SCSI | ROMTYPE_CPUBOARD | ROMTYPE_CD32CART))
-			  exp++;
+				exp++;
 		}
 		i++;
-  }
+	}
 	translate_message (exp ? NUMSG_EXPROMNEED : NUMSG_ROMNEED, tmp3);
 	gui_message (tmp3, tmp2);
 }
@@ -1665,47 +1648,39 @@ void romwarning (const int *ids)
 
 static void byteswap (uae_u8 *buf, int size)
 {
-  int i;
-  for (i = 0; i < size; i += 2) {
-  	uae_u8 t = buf[i];
-  	buf[i] = buf[i + 1];
-  	buf[i + 1] = t;
-  }
+	int i;
+	for (i = 0; i < size; i += 2) {
+		uae_u8 t = buf[i];
+		buf[i] = buf[i + 1];
+		buf[i + 1] = t;
+	}
 }
 static void wordbyteswap (uae_u8 *buf, int size)
 {
-  int i;
-  for (i = 0; i < size; i += 4) {
-  	uae_u8 t;
-  	t = buf[i + 0];
-  	buf[i + 0] = buf[i + 2];
-  	buf[i + 2] = t;
-  	t = buf[i + 1];
-  	buf[i + 1] = buf[i + 3];
-  	buf[i + 3] = t;
-  }
+	int i;
+	for (i = 0; i < size; i += 4) {
+		uae_u8 t;
+		t = buf[i + 0];
+		buf[i + 0] = buf[i + 2];
+		buf[i + 2] = t;
+		t = buf[i + 1];
+		buf[i + 1] = buf[i + 3];
+		buf[i + 3] = t;
+	}
 }
 
 static void mergecd32 (uae_u8 *dst, uae_u8 *src, int size)
 {
-  int i, k;
-  k = 0;
-  for (i = 0; i < size / 2; i += 2) {
-  	int j = i + size / 2;
-  	dst[k + 1] = src[i + 0];
-  	dst[k + 0] = src[i + 1];
-  	dst[k + 3] = src[j + 0];
-  	dst[k + 2] = src[j + 1];
-  	k += 4;
-  }
-#if 0
-	{
-		struct zfile *f;
-		f = zfile_fopen ("c:\\d\\1.rom","wb", ZFD_NORMAL);
-		zfile_fwrite (dst, 1, size, f);
-		zfile_fclose(f);
+	int i, k;
+	k = 0;
+	for (i = 0; i < size / 2; i += 2) {
+		int j = i + size / 2;
+		dst[k + 1] = src[i + 0];
+		dst[k + 0] = src[i + 1];
+		dst[k + 3] = src[j + 0];
+		dst[k + 2] = src[j + 1];
+		k += 4;
 	}
-#endif
 }
 
 static void descramble (const struct romdata *rd, uae_u8 *data, int size, int odd)
@@ -1718,37 +1693,27 @@ static void descramble (const struct romdata *rd, uae_u8 *data, int size, int od
 
 static int read_rom_file (uae_u8 *buf, const struct romdata *rd)
 {
-  struct zfile *zf;
-  struct romlist *rl = romlist_getrl (rd);
-  uae_char tmp[11];
+	struct zfile *zf;
+	struct romlist *rl = romlist_getrl (rd);
+	uae_char tmp[11];
 
-  if (!rl || _tcslen (rl->path) == 0)
-  	return 0;
+	if (!rl || _tcslen (rl->path) == 0)
+		return 0;
 	zf = zfile_fopen (rl->path, _T("rb"), ZFD_NORMAL);
-  if (!zf)
-  	return 0;
-  addkeydir (rl->path);
-  zfile_fread (tmp, sizeof tmp, 1, zf);
-  if (!memcmp (tmp, "AMIROMTYPE1", sizeof tmp)) {
-  	zfile_fread (buf, rd->size, 1, zf);
-    decode_cloanto_rom_do (buf, rd->size, rd->size);
-  } else {
-  	memcpy (buf, tmp, sizeof tmp);
-  	zfile_fread (buf + sizeof tmp, rd->size - sizeof (tmp), 1, zf);
-  }
-  zfile_fclose (zf);
-  return 1;
+	if (!zf)
+		return 0;
+	addkeydir (rl->path);
+	zfile_fread (tmp, sizeof tmp, 1, zf);
+	if (!memcmp (tmp, "AMIROMTYPE1", sizeof tmp)) {
+		zfile_fread (buf, rd->size, 1, zf);
+		decode_cloanto_rom_do (buf, rd->size, rd->size);
+	} else {
+		memcpy (buf, tmp, sizeof tmp);
+		zfile_fread (buf + sizeof tmp, rd->size - sizeof (tmp), 1, zf);
+	}
+	zfile_fclose (zf);
+	return 1;
 }
-
-#if SAVE_ROM
-static void save_rom(uae_u8 *rom, int size)
-{
-	struct zfile *f;
-	f = zfile_fopen (_T("c:\\temp\\1.rom"), _T("wb"));
-	zfile_fwrite (rom, 1, size, f);
-	zfile_fclose(f);
-}
-#endif
 
 struct zfile *read_rom (struct romdata *prd)
 {
@@ -1756,45 +1721,45 @@ struct zfile *read_rom (struct romdata *prd)
 	struct romdata *rd = prd;
 	struct romdata *rdpair = NULL;
 	const TCHAR *name;
-  int id = rd->id;
-  uae_u32 crc32;
-  int size;
-  uae_u8 *buf, *buf2;
+	int id = rd->id;
+	uae_u32 crc32;
+	int size;
+	uae_u8 *buf, *buf2;
 
-  /* find parent node */
-  for (;;) {
-  	if (rd2 == &roms[0])
-	    break;
-  	if (rd2[-1].id != id)
-	    break;
-  	rd2--;
-  }
+	/* find parent node */
+	for (;;) {
+		if (rd2 == &roms[0])
+			break;
+		if (rd2[-1].id != id)
+			break;
+		rd2--;
+	}
 	
-  size = rd2->size;
-  crc32 = rd2->crc32;
-  name = rd->name;
-  buf = xmalloc (uae_u8, size * 2);
-  memset (buf, 0xff, size * 2);
-  if (!buf)
-  	return NULL;
-  buf2 = buf + size;
-  while (rd->id == id) {
-  	int i, j, add;
-  	int ok = 0;
-  	uae_u32 flags = rd->type;
-    int odd = (flags & ROMTYPE_ODD) ? 1 : 0;
+	size = rd2->size;
+	crc32 = rd2->crc32;
+	name = rd->name;
+	buf = xmalloc (uae_u8, size * 2);
+	memset (buf, 0xff, size * 2);
+	if (!buf)
+		return NULL;
+	buf2 = buf + size;
+	while (rd->id == id) {
+		int i, j, add;
+		int ok = 0;
+		uae_u32 flags = rd->type;
+		int odd = (flags & ROMTYPE_ODD) ? 1 : 0;
 
-  	add = 0;
-  	for (i = 0; i < 2; i++) {
-	    memset (buf, 0, size);
-	    if (!(flags & (ROMTYPE_EVEN | ROMTYPE_ODD))) {
-    		read_rom_file (buf, rd);
-    		if (flags & ROMTYPE_CD32) {
-  		    memcpy (buf2, buf, size);
-  		    mergecd32 (buf, buf2, size);
-    		}
-    		add = 1;
-    		i++;
+		add = 0;
+		for (i = 0; i < 2; i++) {
+			memset (buf, 0, size);
+			if (!(flags & (ROMTYPE_EVEN | ROMTYPE_ODD))) {
+				read_rom_file (buf, rd);
+				if (flags & ROMTYPE_CD32) {
+					memcpy (buf2, buf, size);
+					mergecd32 (buf, buf2, size);
+				}
+				add = 1;
+				i++;
 			} else if (flags & ROMTYPE_QUAD) {
 				if (i == 0) {
 					for (int k = 0; k < 4; k++) {
@@ -1813,97 +1778,93 @@ struct zfile *read_rom (struct romdata *prd)
 					}
 				}
 				add = 4;
-      } else {
-    		int romsize = size / 2;
-    		if (i)
-		      odd = !odd;
+			} else {
+				int romsize = size / 2;
+				if (i)
+					odd = !odd;
 				if (rd->id == rd[1].id)
 					rdpair = &rd[1];
 				else if (rd != roms)
 					rdpair = &rd[-1];
 				else
 					rdpair = rd;
-    		if (flags & ROMTYPE_8BIT) {
-		      read_rom_file (buf2, rd);
-		      if (flags & ROMTYPE_BYTESWAP)
-	          byteswap (buf2, romsize);
-		      if (flags & ROMTYPE_SCRAMBLED)
-	          descramble (rd, buf2, romsize, odd);
-		      for (j = 0; j < size; j += 2)
-      			buf[j + odd] = buf2[j / 2];
+				if (flags & ROMTYPE_8BIT) {
+					read_rom_file (buf2, rd);
+					if (flags & ROMTYPE_BYTESWAP)
+						byteswap (buf2, romsize);
+					if (flags & ROMTYPE_SCRAMBLED)
+						descramble (rd, buf2, romsize, odd);
+					for (j = 0; j < size; j += 2)
+						buf[j + odd] = buf2[j / 2];
 					read_rom_file (buf2, rdpair);
-    	    if (flags & ROMTYPE_BYTESWAP)
-	          byteswap (buf2, romsize);
-		      if (flags & ROMTYPE_SCRAMBLED)
-	          descramble (rd + 1, buf2, romsize, !odd);
-		      for (j = 0; j < size; j += 2)
-      			buf[j + (1 - odd)] = buf2[j / 2];
-    		} else {
-		      read_rom_file (buf2, rd);
-		      if (flags & ROMTYPE_BYTESWAP)
-      			byteswap (buf2, romsize);
-		      if (flags & ROMTYPE_SCRAMBLED)
-      			descramble (rd, buf2, romsize, odd);
-		      for (j = 0; j < size; j += 4) {
-      			buf[j + 2 * odd + 0] = buf2[j / 2 + 0];
-      			buf[j + 2 * odd + 1] = buf2[j / 2 + 1];
-		      }
+					if (flags & ROMTYPE_BYTESWAP)
+						byteswap (buf2, romsize);
+					if (flags & ROMTYPE_SCRAMBLED)
+						descramble (rd + 1, buf2, romsize, !odd);
+					for (j = 0; j < size; j += 2)
+						buf[j + (1 - odd)] = buf2[j / 2];
+				} else {
+					read_rom_file (buf2, rd);
+					if (flags & ROMTYPE_BYTESWAP)
+						byteswap (buf2, romsize);
+					if (flags & ROMTYPE_SCRAMBLED)
+						descramble (rd, buf2, romsize, odd);
+					for (j = 0; j < size; j += 4) {
+						buf[j + 2 * odd + 0] = buf2[j / 2 + 0];
+						buf[j + 2 * odd + 1] = buf2[j / 2 + 1];
+					}
 					read_rom_file (buf2, rdpair);
-		      if (flags & ROMTYPE_BYTESWAP)
-      			byteswap (buf2, romsize);
-		      if (flags & ROMTYPE_SCRAMBLED)
-      			descramble (rd + 1, buf2, romsize, !odd);
-		      for (j = 0; j < size; j += 4) {
-      			buf[j + 2 * (1 - odd) + 0] = buf2[j / 2 + 0];
-      			buf[j + 2 * (1 - odd) + 1] = buf2[j / 2 + 1];
-		      }
-    		}
-        add = 2;
-      }
-
-#if SAVE_ROM
-			save_rom(buf, size);
-#endif
+					if (flags & ROMTYPE_BYTESWAP)
+						byteswap (buf2, romsize);
+					if (flags & ROMTYPE_SCRAMBLED)
+						descramble (rd + 1, buf2, romsize, !odd);
+					for (j = 0; j < size; j += 4) {
+						buf[j + 2 * (1 - odd) + 0] = buf2[j / 2 + 0];
+						buf[j + 2 * (1 - odd) + 1] = buf2[j / 2 + 1];
+					}
+				}
+				add = 2;
+			}
 
 			if (notcrc32(crc32) || get_crc32(buf, size) == crc32) {
-    		ok = 1;
-		  }
-		  if (!ok && (rd->type & ROMTYPE_AR)) {
-			  uae_u8 tmp[2];
-			  tmp[0] = buf[0];
-			  tmp[1] = buf[1];
-			  buf[0] = buf[1] = 0;
-			  if (get_crc32 (buf, size) == crc32)
-				  ok = 1;
-			  buf[0] = tmp[0];
-			  buf[1] = tmp[1];
-		  }
-		  if (!ok) {
-    		/* perhaps it is byteswapped without byteswap entry? */
-    		byteswap (buf, size);
-    		if (get_crc32 (buf, size) == crc32)
-		      ok = 1;
+				ok = 1;
+			}
+			if (!ok && (rd->type & ROMTYPE_AR)) {
+				uae_u8 tmp[2];
+				tmp[0] = buf[0];
+				tmp[1] = buf[1];
+				buf[0] = buf[1] = 0;
+				if (get_crc32 (buf, size) == crc32)
+					ok = 1;
+				buf[0] = tmp[0];
+				buf[1] = tmp[1];
+			}
+			if (!ok) {
+				/* perhaps it is byteswapped without byteswap entry? */
+				byteswap (buf, size);
+				if (get_crc32 (buf, size) == crc32)
+					ok = 1;
 				if (!ok)
 					byteswap(buf, size);
-      }
-      if (ok) {
-    		struct zfile *zf = zfile_fopen_empty (NULL, name, size);
-    		if (zf) {
-    	    zfile_fwrite (buf, size, 1, zf);
-    	    zfile_fseek (zf, 0, SEEK_SET);
-    		}
-    		xfree (buf);
-    		return zf;
-      }
-  	}
-  	rd += add;
+			}
+			if (ok) {
+				struct zfile *zf = zfile_fopen_empty (NULL, name, size);
+				if (zf) {
+					zfile_fwrite (buf, size, 1, zf);
+					zfile_fseek (zf, 0, SEEK_SET);
+				}
+				xfree (buf);
+				return zf;
+			}
+		}
+		rd += add;
 
-  }
-  xfree (buf);
-  return NULL;
+	}
+	xfree (buf);
+	return NULL;
 }
 
-struct zfile *rom_fopen (const TCHAR *name, const TCHAR *mode, int mask)
+struct zfile *rom_fopen(const TCHAR *name, const TCHAR *mode, int mask)
 {
 	return zfile_fopen (name, mode, mask);
 }
@@ -1977,45 +1938,45 @@ static struct zfile *rom_fopen2(const TCHAR *name, const TCHAR *mode, int mask)
 
 struct zfile *read_rom_name (const TCHAR *filename)
 {
-  struct zfile *f;
+	struct zfile *f;
 
-  for (int i = 0; i < romlist_cnt; i++) {
+	for (int i = 0; i < romlist_cnt; i++) {
 		if (my_issamepath(filename, rl[i].path)) {
-	    struct romdata *rd = rl[i].rd;
+			struct romdata *rd = rl[i].rd;
 			f = read_rom (rd);
-	    if (f)
-    		return f;
-  	}
-  }
+			if (f)
+				return f;
+		}
+	}
 	f = rom_fopen2(filename, _T("rb"), ZFD_NORMAL);
-  if (f) {
+	if (f) {
 		uae_u8 tmp[11] = { 0 };
-  	zfile_fread (tmp, sizeof tmp, 1, f);
-  	if (!memcmp (tmp, "AMIROMTYPE1", sizeof tmp)) {
-	    struct zfile *df;
-	    int size;
-	    uae_u8 *buf;
-	    addkeydir (filename);
-	    zfile_fseek (f, 0, SEEK_END);
-	    size = zfile_ftell (f) - sizeof tmp;
-	    zfile_fseek (f, sizeof tmp, SEEK_SET);
-	    buf = xmalloc (uae_u8, size);
-	    zfile_fread (buf, size, 1, f);
-			df = zfile_fopen_empty (f, _T("tmp.rom"), size);
-	    decode_cloanto_rom_do (buf, size, size);
-	    zfile_fwrite (buf, size, 1, df);
-	    zfile_fclose (f);
-	    xfree (buf);
-	    zfile_fseek (df, 0, SEEK_SET);
-	    f = df;
-	  } else {
-	      zfile_fseek (f, -((int)sizeof tmp), SEEK_CUR);
-	  }
-  }
-  return f;
+		zfile_fread(tmp, sizeof tmp, 1, f);
+		if (!memcmp(tmp, "AMIROMTYPE1", sizeof tmp)) {
+			struct zfile *df;
+			int size;
+			uae_u8 *buf;
+			addkeydir(filename);
+			zfile_fseek(f, 0, SEEK_END);
+			size = zfile_ftell(f) - sizeof tmp;
+			zfile_fseek(f, sizeof tmp, SEEK_SET);
+			buf = xmalloc(uae_u8, size);
+			zfile_fread(buf, size, 1, f);
+			df = zfile_fopen_empty(f, _T("tmp.rom"), size);
+			decode_cloanto_rom_do(buf, size, size);
+			zfile_fwrite(buf, size, 1, df);
+			zfile_fclose(f);
+			xfree(buf);
+			zfile_fseek(df, 0, SEEK_SET);
+			f = df;
+		} else {
+			zfile_fseek (f, -((int)sizeof tmp), SEEK_CUR);
+		}
+	}
+	return f;
 }
 
-struct zfile *read_rom_name_guess (const TCHAR *filename)
+struct zfile *read_rom_name_guess (const TCHAR *filename, TCHAR *out)
 {
 	int i, j;
 	struct zfile *f;
@@ -2042,6 +2003,7 @@ struct zfile *read_rom_name_guess (const TCHAR *filename)
 			f = read_rom (rd);
 			if (f) {
 				write_log (_T("ROM %s not found, using %s\n"), filename, rl[i].path);
+				_tcscpy(out, rl[i].path);
 				return f;
 			}
 		}
@@ -2051,36 +2013,34 @@ struct zfile *read_rom_name_guess (const TCHAR *filename)
 
 void kickstart_fix_checksum (uae_u8 *mem, int size)
 {
-  uae_u32 cksum = 0, prevck = 0;
-  int i, ch = size == 524288 ? 0x7ffe8 : (size == 262144 ? 0x3ffe8 : 0x3e);
+	uae_u32 cksum = 0, prevck = 0;
+	int i, ch = size == 524288 ? 0x7ffe8 : (size == 262144 ? 0x3ffe8 : 0x3e);
 
-  mem[ch] = 0;
-  mem[ch + 1] = 0;
-  mem[ch + 2] = 0;
-  mem[ch + 3] = 0;
-  for (i = 0; i < size; i+=4) {
-  	uae_u32 data = (mem[i] << 24) | (mem[i + 1] << 16) | (mem[i + 2] << 8) | mem[i + 3];
-  	cksum += data;
-  	if (cksum < prevck)
-      cksum++;
-  	prevck = cksum;
-  }
-  cksum ^= 0xffffffff;
-  mem[ch++] = cksum >> 24;
-  mem[ch++] = cksum >> 16;
-  mem[ch++] = cksum >> 8;
-  mem[ch++] = cksum >> 0;
+	mem[ch] = 0;
+	mem[ch + 1] = 0;
+	mem[ch + 2] = 0;
+	mem[ch + 3] = 0;
+	for (i = 0; i < size; i+=4) {
+		uae_u32 data = (mem[i] << 24) | (mem[i + 1] << 16) | (mem[i + 2] << 8) | mem[i + 3];
+		cksum += data;
+		if (cksum < prevck)
+			cksum++;
+		prevck = cksum;
+	}
+	cksum ^= 0xffffffff;
+	mem[ch++] = cksum >> 24;
+	mem[ch++] = cksum >> 16;
+	mem[ch++] = cksum >> 8;
+	mem[ch++] = cksum >> 0;
 }
 
 int kickstart_checksum (uae_u8 *mem, int size)
 {
-  if (!kickstart_checksum_do (mem, size)) {
-#ifndef	SINGLEFILE
-    notify_user (NUMSG_KSROMCRCERROR);
-#endif
-    return 0;
-  }
-  return 1;
+	if (!kickstart_checksum_do (mem, size)) {
+		notify_user (NUMSG_KSROMCRCERROR);
+		return 0;
+	}
+	return 1;
 }
 
 int configure_rom (struct uae_prefs *p, const int *rom, int msg)
@@ -2148,6 +2108,8 @@ const struct expansionromtype *get_unit_expansion_rom(int hdunit)
 		return &expansionroms[hdunit - HD_CONTROLLER_TYPE_SCSI_EXPANSION_FIRST];
 	if (hdunit >= HD_CONTROLLER_TYPE_IDE_EXPANSION_FIRST && hdunit <= HD_CONTROLLER_TYPE_IDE_LAST)
 		return &expansionroms[hdunit - HD_CONTROLLER_TYPE_IDE_EXPANSION_FIRST];
+	if (hdunit >= HD_CONTROLLER_TYPE_CUSTOM_FIRST && hdunit <= HD_CONTROLLER_TYPE_CUSTOM_LAST)
+		return &expansionroms[hdunit - HD_CONTROLLER_TYPE_CUSTOM_FIRST];
 	return NULL;
 }
 
@@ -2199,8 +2161,8 @@ struct boardromconfig *get_device_rom_new(struct uae_prefs *p, int romtype, int 
 		return &fake;
 	}
 	if (index)
-		*index = 0;
-	struct boardromconfig *brc = get_device_rom(p, romtype, devnum, &idx2);
+		*index = ert->parentromtype ? 1 : 0;
+	struct boardromconfig *brc = get_device_rom(p, ert->parentromtype ? ert->parentromtype : romtype, devnum, &idx2);
 	if (!brc) {
 		for (int i = 0; i < MAX_EXPANSION_BOARDS; i++) {
 			brc = &p->expansionboard[i];
@@ -2244,12 +2206,12 @@ struct boardromconfig *get_device_rom(struct uae_prefs *p, int romtype, int devn
 	const struct expansionromtype *ert = get_device_expansion_rom(romtype);
 	if (!ert) {
 		if (index)
-		  *index = 0;
+			*index = 0;
 		return NULL;
 	}
-	int parentrom = romtype;
+	int parentrom = ert->parentromtype ? ert->parentromtype : romtype;
 	if (index)
-		*index = 0;
+		*index = ert->parentromtype ? 1 : 0;
 	for (int i = 0; i < MAX_EXPANSION_BOARDS; i++) {
 		struct boardromconfig *brc = &p->expansionboard[i];
 		if (!brc->device_type)
@@ -2397,6 +2359,7 @@ bool load_rom_rc(struct romconfig *rc, uae_u32 romtype, int maxfilesize, int fil
 	struct zfile *f = read_device_from_romconfig(rc, romtype);
 	if (!f)
 		return false;
+	TCHAR *ext = _tcsrchr(zfile_getname(f), '.');
 	zfile_fseek(f, fileoffset, SEEK_SET);
 	int cnt = 0;
 	int pos = 0;
@@ -2470,7 +2433,7 @@ struct zfile *flashromfile_open(const TCHAR *name)
 			rw = false;
 			f = zfile_fopen(name, _T("rb"), ZFD_NORMAL);
 			if (!f) {
-				fetch_rompath(path, sizeof path / sizeof(TCHAR));
+				get_rom_path(path, sizeof path / sizeof(TCHAR));
 				_tcscat(path, name);
 				rw = true;
 				f = zfile_fopen(path, _T("rb+"), ZFD_NONE);

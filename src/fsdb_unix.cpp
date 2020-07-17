@@ -8,14 +8,11 @@
   * Copyright 1999 Bernd Schmidt
   */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <stdlib.h>
-
+#include "sysconfig.h"
 #include "sysdeps.h"
 
 #include "fsdb.h"
+#include "uae.h"
 
 /* these are deadly (but I think allowed on the Amiga): */
 #define NUM_EVILCHARS 7
@@ -26,12 +23,12 @@ static TCHAR evilchars[NUM_EVILCHARS] = { '\\', '*', '?', '\"', '<', '>', '|' };
 /* Return nonzero for any name we can't create on the native filesystem.  */
 static int fsdb_name_invalid_2 (a_inode *aino, const TCHAR *n, int dir)
 {
-  int i;
+	int i;
 	int l = _tcslen (n);
 
-  /* the reserved fsdb filename */
-  if (_tcscmp (n, FSDB_FILE) == 0)
-  	return -1;
+	/* the reserved fsdb filename */
+	if (_tcscmp (n, FSDB_FILE) == 0)
+		return -1;
 
 	if (dir) {
 		if (n[0] == '.' && l == 1)
@@ -40,11 +37,11 @@ static int fsdb_name_invalid_2 (a_inode *aino, const TCHAR *n, int dir)
 			return -1;
 	}
 
-  /* these characters are *never* allowed */
-  for (i = 0; i < NUM_EVILCHARS; i++) {
-    if (_tcschr (n, evilchars[i]) != 0)
-      return 1;
-  }
+	/* these characters are *never* allowed */
+	for (i = 0; i < NUM_EVILCHARS; i++) {
+		if (_tcschr (n, evilchars[i]) != 0)
+			return 1;
+	}
 
 	return 0; /* the filename passed all checks, now it should be ok */
 }
@@ -77,15 +74,15 @@ int fsdb_exists (const TCHAR *nname)
  * native fs, fill in information about this file/directory.  */
 int fsdb_fill_file_attrs (a_inode *base, a_inode *aino)
 {
-    struct stat statbuf;
-    /* This really shouldn't happen...  */
-    if (stat (aino->nname, &statbuf) == -1)
-	return 0;
-    aino->dir = S_ISDIR (statbuf.st_mode) ? 1 : 0;
-    
-    aino->amigaos_mode = ((S_IXUSR & statbuf.st_mode ? 0 : A_FIBF_EXECUTE)
-    			  | (S_IWUSR & statbuf.st_mode ? 0 : A_FIBF_WRITE)
-    			  | (S_IRUSR & statbuf.st_mode ? 0 : A_FIBF_READ));
+  struct stat statbuf;
+  /* This really shouldn't happen...  */
+  if (stat (aino->nname, &statbuf) == -1)
+  	return 0;
+  aino->dir = S_ISDIR (statbuf.st_mode) ? 1 : 0;
+  
+  aino->amigaos_mode = ((S_IXUSR & statbuf.st_mode ? 0 : A_FIBF_EXECUTE)
+		  | (S_IWUSR & statbuf.st_mode ? 0 : A_FIBF_WRITE)
+		  | (S_IRUSR & statbuf.st_mode ? 0 : A_FIBF_READ));
 
 #if defined(WIN32) || defined(AMIBERRY)
     // Always give execute & read permission
@@ -93,7 +90,7 @@ int fsdb_fill_file_attrs (a_inode *base, a_inode *aino)
     aino->amigaos_mode &= ~A_FIBF_EXECUTE;
     aino->amigaos_mode &= ~A_FIBF_READ;
 #endif
-    return 1;
+  return 1;
 }
 
 int fsdb_set_file_attrs (a_inode *aino)
@@ -102,33 +99,30 @@ int fsdb_set_file_attrs (a_inode *aino)
   int mode;
   uae_u32 mask = aino->amigaos_mode;
 
-	if (aino->vfso)
-		return 1;
-
-    if (stat (aino->nname, &statbuf) == -1)
-	return ERROR_OBJECT_NOT_AROUND;
+  if (stat (aino->nname, &statbuf) == -1)
+  	return ERROR_OBJECT_NOT_AROUND;
 	
-    mode = statbuf.st_mode;
+  mode = statbuf.st_mode;
 
 	if (mask & A_FIBF_READ)
-	    mode &= ~S_IRUSR;
+    mode &= ~S_IRUSR;
 	else
-	    mode |= S_IRUSR;
+    mode |= S_IRUSR;
 
 	if (mask & A_FIBF_WRITE)
-	    mode &= ~S_IWUSR;
+    mode &= ~S_IWUSR;
 	else
-	    mode |= S_IWUSR;
+    mode |= S_IWUSR;
 
 	if (mask & A_FIBF_EXECUTE)
-	    mode &= ~S_IXUSR;
+    mode &= ~S_IXUSR;
 	else
-	    mode |= S_IXUSR;
+    mode |= S_IXUSR;
 
 	chmod (aino->nname, mode);
 
-    aino->dirty = 1;
-    return 0;
+  aino->dirty = 1;
+  return 0;
 }
 
 /* Return nonzero if we can represent the amigaos_mode of AINO within the
@@ -140,8 +134,6 @@ int fsdb_mode_representable_p (const a_inode *aino, int amigaos_mode)
   if (0 && aino->dir)
   	return amigaos_mode == 0;
     
-	if (aino->vfso)
-		return 1;
   if (mask & A_FIBF_SCRIPT) /* script */
     return 0;
   if ((mask & 15) == 15) /* xxxxRWED == OK */
@@ -183,7 +175,7 @@ TCHAR *fsdb_create_unique_nname (a_inode *base, const TCHAR *suggestion)
 	  /* tmpnam isn't reentrant and I don't really want to hack configure
 	   * right now to see whether tmpnam_r is available...  */
 	  for (i = 0; i < 8; i++) {
-      tmp[i+8] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[rand () % 63];
+      tmp[i+8] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[uaerand () % 63];
 	  }
   }
 }

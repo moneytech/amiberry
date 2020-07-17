@@ -2,26 +2,18 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <SDL/SDL_ttf.h>
-#include <guichan/sdl.hpp>
-#include "sdltruetypefont.hpp"
-#elif USE_SDL2
 #include <guisan.hpp>
 #include <SDL_ttf.h>
 #include <guisan/sdl.hpp>
 #include <guisan/sdl/sdltruetypefont.hpp>
-#endif
 #include "SelectorEntry.hpp"
-#include "UaeListBox.hpp"
 
 #include "sysdeps.h"
 #include "options.h"
 #include "uae.h"
 #include "gui_handling.h"
 
-static char last_active_config[MAX_DPATH] = { '\0' };
+static char last_active_config[MAX_DPATH] = {'\0'};
 static int ensureVisible = -1;
 
 static gcn::Button* cmdLoad;
@@ -31,11 +23,10 @@ static gcn::Label* lblName;
 static gcn::TextField* txtName;
 static gcn::Label* lblDesc;
 static gcn::TextField* txtDesc;
-static gcn::UaeListBox* lstConfigs;
+static gcn::ListBox* lstConfigs;
 static gcn::ScrollArea* scrAreaConfigs;
 
-
-bool LoadConfigByName(const char *name)
+bool LoadConfigByName(const char* name)
 {
 	ConfigFileInfo* config = SearchConfigInList(name);
 	if (config != nullptr)
@@ -50,8 +41,8 @@ bool LoadConfigByName(const char *name)
 			txtDesc->setText(config->Description);
 			target_cfgfile_load(&changed_prefs, config->FullPath, 0, 0);
 			strncpy(last_active_config, config->Name, MAX_DPATH);
-			DisableResume();
-			RefreshAllPanels();
+			disable_resume();
+			refresh_all_panels();
 		}
 	}
 
@@ -60,27 +51,26 @@ bool LoadConfigByName(const char *name)
 
 void SetLastActiveConfig(const char* filename)
 {
-	extractFileName(filename, last_active_config);
-	removeFileExtension(last_active_config);
+	extract_filename(filename, last_active_config);
+	remove_file_extension(last_active_config);
 }
-
 
 class ConfigsListModel : public gcn::ListModel
 {
-	vector<string> configs;
+	std::vector<std::string> configs;
 
 public:
 	ConfigsListModel()
-		= default;
+	= default;
 
 	int getNumberOfElements() override
 	{
 		return configs.size();
 	}
 
-	string getElementAt(int i) override
+	std::string getElementAt(int i) override
 	{
-		if (i >= configs.size() || i < 0)
+		if (i >= static_cast<int>(configs.size()) || i < 0)
 			return "---";
 		return configs[i];
 	}
@@ -88,14 +78,14 @@ public:
 	void InitConfigsList(void)
 	{
 		configs.clear();
-		for (auto & i : ConfigFilesList)
+		for (auto& i : ConfigFilesList)
 		{
 			char tmp[MAX_DPATH];
 			strncpy(tmp, i->Name, MAX_DPATH);
 			if (strlen(i->Description) > 0)
 			{
 				strncat(tmp, " (", MAX_DPATH - 1);
-				strncat(tmp, i->Description, MAX_DPATH - 1);
+				strncat(tmp, i->Description, MAX_DPATH - 3);
 				strncat(tmp, ")", MAX_DPATH - 1);
 			}
 			configs.emplace_back(tmp);
@@ -104,7 +94,6 @@ public:
 };
 
 static ConfigsListModel* configsList;
-
 
 class ConfigButtonActionListener : public gcn::ActionListener
 {
@@ -118,18 +107,20 @@ public:
 			// Load selected configuration
 			//-----------------------------------------------
 			i = lstConfigs->getSelected();
+			if (i == -1) return;
+			
 			if (emulating)
 			{
-				DisableResume();
+				disable_resume();
 				target_cfgfile_load(&changed_prefs, ConfigFilesList[i]->FullPath, 0, 0);
 				strncpy(last_active_config, ConfigFilesList[i]->Name, MAX_DPATH);
-				RefreshAllPanels();
+				refresh_all_panels();
 			}
 			else
 			{
 				target_cfgfile_load(&changed_prefs, ConfigFilesList[i]->FullPath, 0, 0);
 				strncpy(last_active_config, ConfigFilesList[i]->Name, MAX_DPATH);
-				RefreshAllPanels();
+				refresh_all_panels();
 			}
 		}
 		else if (actionEvent.getSource() == cmdSave)
@@ -140,9 +131,9 @@ public:
 			char filename[MAX_DPATH];
 			if (!txtName->getText().empty())
 			{
-				fetch_configurationpath(filename, MAX_DPATH);
+				get_configuration_path(filename, MAX_DPATH);
 				strncat(filename, txtName->getText().c_str(), MAX_DPATH - 1);
-				strncat(filename, ".uae", MAX_DPATH);
+				strncat(filename, ".uae", MAX_DPATH - 1);
 				strncpy(changed_prefs.description, txtDesc->getText().c_str(), 256);
 				if (cfgfile_save(&changed_prefs, filename, 0))
 					RefreshPanelConfig();
@@ -178,14 +169,14 @@ public:
 
 static ConfigButtonActionListener* configButtonActionListener;
 
-
 class ConfigsListActionListener : public gcn::ActionListener
 {
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
 		const int selected_item = lstConfigs->getSelected();
-		if (txtName->getText() != ConfigFilesList[selected_item]->Name || txtDesc->getText() != ConfigFilesList[selected_item]->Description)
+		if (txtName->getText() != ConfigFilesList[selected_item]->Name || txtDesc->getText() != ConfigFilesList[
+			selected_item]->Description)
 		{
 			//-----------------------------------------------
 			// Selected a config -> Update Name and Description fields
@@ -203,9 +194,10 @@ public:
 
 			if (emulating)
 			{
-				DisableResume();
+				disable_resume();
 			}
-			RefreshAllPanels();
+			refresh_all_panels();
+			copy_prefs(&changed_prefs, &currprefs);
 			uae_reset(1, 0);
 			gui_running = false;
 		}
@@ -217,6 +209,50 @@ static ConfigsListActionListener* configsListActionListener;
 void InitPanelConfig(const struct _ConfigCategory& category)
 {
 	configButtonActionListener = new ConfigButtonActionListener();
+
+	ReadConfigFileList();
+	configsList = new ConfigsListModel();
+	configsList->InitConfigsList();
+	configsListActionListener = new ConfigsListActionListener();
+
+	lstConfigs = new gcn::ListBox(configsList);
+	lstConfigs->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER - 22, 232);
+	lstConfigs->setBaseColor(colTextboxBackground);
+	lstConfigs->setBackgroundColor(colTextboxBackground);
+	lstConfigs->setSelectionColor(colSelectorActive);
+	lstConfigs->setWrappingEnabled(true);
+	lstConfigs->setId("ConfigList");
+	lstConfigs->addActionListener(configsListActionListener);
+
+	scrAreaConfigs = new gcn::ScrollArea(lstConfigs);
+	scrAreaConfigs->setBorderSize(1);
+	scrAreaConfigs->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
+	scrAreaConfigs->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER - 2, 252);
+	scrAreaConfigs->setScrollbarWidth(20);
+	scrAreaConfigs->setBackgroundColor(colTextboxBackground);
+
+	lblName = new gcn::Label("Name:");
+	lblName->setSize(lblName->getWidth(), lblName->getHeight());
+	lblName->setAlignment(gcn::Graphics::RIGHT);
+	txtName = new gcn::TextField();
+	txtName->setSize(300, TEXTFIELD_HEIGHT);
+	txtName->setBackgroundColor(colTextboxBackground);
+
+	lblDesc = new gcn::Label("Description:");
+	lblDesc->setSize(lblDesc->getWidth(), lblDesc->getHeight());
+	lblDesc->setAlignment(gcn::Graphics::RIGHT);
+	txtDesc = new gcn::TextField();
+	txtDesc->setSize(300, TEXTFIELD_HEIGHT);
+	txtDesc->setBackgroundColor(colTextboxBackground);
+	
+	category.panel->add(scrAreaConfigs);
+	category.panel->add(lblName, DISTANCE_BORDER,
+	                    scrAreaConfigs->getY() + scrAreaConfigs->getHeight() + DISTANCE_NEXT_Y);
+	category.panel->add(txtName, DISTANCE_BORDER + lblDesc->getWidth() + 8,
+	                    scrAreaConfigs->getY() + scrAreaConfigs->getHeight() + DISTANCE_NEXT_Y);
+	category.panel->add(lblDesc, DISTANCE_BORDER, txtName->getY() + txtName->getHeight() + DISTANCE_NEXT_Y);
+	category.panel->add(txtDesc, DISTANCE_BORDER + lblDesc->getWidth() + 8,
+	                    txtName->getY() + txtName->getHeight() + DISTANCE_NEXT_Y);
 
 	cmdLoad = new gcn::Button("Load");
 	cmdLoad->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
@@ -245,65 +281,19 @@ void InitPanelConfig(const struct _ConfigCategory& category)
 	buttonX += BUTTON_WIDTH + DISTANCE_NEXT_X;
 	buttonX = category.panel->getWidth() - DISTANCE_BORDER - BUTTON_WIDTH;
 	category.panel->add(cmdDelete, buttonX, buttonY);
-
-	lblName = new gcn::Label("Name:");
-	lblName->setSize(lblName->getWidth(), lblName->getHeight());
-	lblName->setAlignment(gcn::Graphics::RIGHT);
-	txtName = new gcn::TextField();
-	txtName->setSize(300, TEXTFIELD_HEIGHT);
-	txtName->setId("ConfigName");
-	txtName->setBackgroundColor(colTextboxBackground);
-
-	lblDesc = new gcn::Label("Description:");
-	lblDesc->setSize(lblDesc->getWidth(), lblDesc->getHeight());
-	lblDesc->setAlignment(gcn::Graphics::RIGHT);
-	txtDesc = new gcn::TextField();
-	txtDesc->setSize(300, TEXTFIELD_HEIGHT);
-	txtDesc->setId("ConfigDesc");
-	txtDesc->setBackgroundColor(colTextboxBackground);
-
-	ReadConfigFileList();
-	configsList = new ConfigsListModel();
-	configsList->InitConfigsList();
-	configsListActionListener = new ConfigsListActionListener();
-
-	lstConfigs = new gcn::UaeListBox(configsList);
-	lstConfigs->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER - 22, 232);
-	lstConfigs->setBaseColor(colTextboxBackground);
-	lstConfigs->setBackgroundColor(colTextboxBackground);
-	lstConfigs->setWrappingEnabled(true);
-	lstConfigs->setId("ConfigList");
-	lstConfigs->addActionListener(configsListActionListener);
-
-	scrAreaConfigs = new gcn::ScrollArea(lstConfigs);
-#ifdef USE_SDL1
-	scrAreaConfigs->setFrameSize(1);
-#elif USE_SDL2
-	scrAreaConfigs->setBorderSize(1);
-#endif
-	scrAreaConfigs->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
-	scrAreaConfigs->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER - 2, 252);
-	scrAreaConfigs->setScrollbarWidth(20);
-	scrAreaConfigs->setBackgroundColor(colTextboxBackground);
-	category.panel->add(scrAreaConfigs);
-
-	category.panel->add(lblName, DISTANCE_BORDER, scrAreaConfigs->getY() + scrAreaConfigs->getHeight() + DISTANCE_NEXT_Y);
-	category.panel->add(txtName, DISTANCE_BORDER + lblDesc->getWidth() + 8, scrAreaConfigs->getY() + scrAreaConfigs->getHeight() + DISTANCE_NEXT_Y);
-	category.panel->add(lblDesc, DISTANCE_BORDER, lblName->getY() + lblName->getHeight() + DISTANCE_NEXT_Y);
-	category.panel->add(txtDesc, DISTANCE_BORDER + lblDesc->getWidth() + 8, txtName->getY() + txtName->getHeight() + DISTANCE_NEXT_Y);
-
+	
 	if (strlen(last_active_config) == 0)
-        {
-            if (strlen(last_loaded_config) == 0)
-		strncpy(last_active_config, OPTIONSFILENAME, MAX_DPATH);
-            else
-            {    
-                strcpy(last_active_config, last_loaded_config);
-                removeFileExtension(last_active_config);
-            }
-        }
+	{
+		if (strlen(last_loaded_config) == 0)
+			strncpy(last_active_config, OPTIONSFILENAME, MAX_DPATH);
+		else
+		{
+			strcpy(last_active_config, last_loaded_config);
+			remove_file_extension(last_active_config);
+		}
+	}
 	txtName->setText(last_active_config);
-	txtDesc->setText(changed_prefs.description);    
+	txtDesc->setText(changed_prefs.description);
 	ensureVisible = -1;
 	RefreshPanelConfig();
 }
@@ -351,22 +341,22 @@ void RefreshPanelConfig()
 				// Select current entry
 				lstConfigs->setSelected(i);
 				ensureVisible = i;
-				RegisterRefreshFunc(MakeCurrentVisible);
+				register_refresh_func(MakeCurrentVisible);
 				break;
 			}
 		}
 	}
 }
 
-bool HelpPanelConfig(std::vector<std::string> &helptext)
+bool HelpPanelConfig(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("To load a configuration, select the entry in the list and then click on \"Load\".");
-	helptext.emplace_back("If you doubleclick on an entry in the list, the emulation starts with this configuration.");
-	helptext.emplace_back("");
-	helptext.emplace_back("If you want to create a new configuration, setup all options, enter a new name in");
-	helptext.emplace_back(R"("Name", provide a short description and then click on "Save".)");
-	helptext.emplace_back("");
+	helptext.emplace_back("If you double-click on an entry in the list, the emulation starts with this configuration.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("If you want to create a new configuration, set all options, enter a new name in");
+	helptext.emplace_back(R"("Name", optionally provide a short description and then click on "Save".)");
+	helptext.emplace_back(" ");
 	helptext.emplace_back("\"Delete\" will delete the selected configuration.");
 	return true;
 }

@@ -1,18 +1,12 @@
-#include <stdio.h>
+#include <cstdio>
 #include <strings.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdbool.h>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
 
-#ifdef USE_SDL1
-#include <guichan.hpp>
-#include <guichan/sdl.hpp>
-#endif
-#ifdef USE_SDL2
 #include <guisan.hpp>
 #include <guisan/sdl.hpp>
-#endif
+
 #include "sysdeps.h"
 #include "uae.h"
 #include "options.h"
@@ -34,7 +28,8 @@
 #endif
 
 int emulating = 0;
-struct uae_prefs workprefs;
+bool config_loaded = false;
+int gui_active;
 
 struct gui_msg
 {
@@ -58,6 +53,8 @@ struct gui_msg gui_msglist[] = {
   { NUMSG_ROMNEED,        "One of the following system ROMs is required:\n\n%s\n\nCheck the System ROM path in the Paths panel and click Rescan ROMs." },
   { NUMSG_EXPROMNEED,     "One of the following expansion boot ROMs is required:\n\n%s\n\nCheck the System ROM path in the Paths panel and click Rescan ROMs." },
   { NUMSG_NOMEMORY,       "Out of memory or too much Z3 autoconfig space configured." },
+  { NUMSG_NOCAPS,         "capsimg.so not found. CAPS/IPF support not available." },
+  { NUMSG_OLDCAPS,        "Old version of capsimg.so found." },
 
   { -1, "" }
 };
@@ -66,6 +63,7 @@ std::vector<ConfigFileInfo*> ConfigFilesList;
 std::vector<AvailableROM*> lstAvailableROMs;
 std::vector<std::string> lstMRUDiskList;
 std::vector<std::string> lstMRUCDList;
+std::vector<std::string> lstMRUWhdloadList;
 
 void AddFileToDiskList(const char *file, int moveToTop)
 {
@@ -113,12 +111,34 @@ void AddFileToCDList(const char *file, int moveToTop)
 		lstMRUCDList.pop_back();
 }
 
+void AddFileToWHDLoadList(const char* file, int moveToTop)
+{
+	unsigned int i;
+
+	for (i = 0; i < lstMRUWhdloadList.size(); ++i)
+	{
+		if (!stricmp(lstMRUWhdloadList[i].c_str(), file))
+		{
+			if (moveToTop)
+			{
+				lstMRUWhdloadList.erase(lstMRUWhdloadList.begin() + i);
+				lstMRUWhdloadList.insert(lstMRUWhdloadList.begin(), file);
+			}
+			break;
+		}
+	}
+	if (i >= lstMRUWhdloadList.size())
+		lstMRUWhdloadList.insert(lstMRUWhdloadList.begin(), file);
+
+	while (lstMRUWhdloadList.size() > MAX_MRU_WHDLOADLIST)
+		lstMRUWhdloadList.pop_back();
+}
 
 void ClearAvailableROMList()
 {
 	while (!lstAvailableROMs.empty())
 	{
-		const auto tmp = lstAvailableROMs[0];
+		auto* const tmp = lstAvailableROMs[0];
 		lstAvailableROMs.erase(lstAvailableROMs.begin());
 		delete tmp;
 	}
@@ -127,7 +147,7 @@ void ClearAvailableROMList()
 static void addrom(struct romdata* rd, const char* path)
 {
 	char tmpName[MAX_DPATH];
-	const auto tmp = new AvailableROM();
+	auto* const tmp = new AvailableROM();
 	getromname(rd, tmpName);
 	strncpy(tmp->Name, tmpName, MAX_DPATH - 1);
 	if (path != nullptr)
@@ -170,7 +190,7 @@ static struct romdata* scan_single_rom_2(struct zfile* f)
 	{
 		zfile_fseek(f, 0, SEEK_SET);
 	}
-	uae_u8* rombuf = xcalloc(uae_u8, size);
+	auto* rombuf = xcalloc(uae_u8, size);
 	if (!rombuf)
 		return nullptr;
 	zfile_fread(rombuf, 1, size, f);
@@ -197,25 +217,11 @@ static struct romdata* scan_single_rom_2(struct zfile* f)
 	return rd;
 }
 
-static struct romdata* scan_single_rom(char* path)
-{
-	char tmp[MAX_DPATH];
-
-	strncpy (tmp, path, MAX_DPATH - 1);
-	auto rd = getromdatabypath(path);
-	if (rd && rd->crc32 == 0xffffffff)
-		return rd;
-	const auto z = zfile_fopen(path, "rb", ZFD_NORMAL);
-	if (!z)
-		return nullptr;
-	return scan_single_rom_2(z);
-}
-
 static int isromext(char* path)
 {
 	if (!path)
 		return 0;
-	auto ext = strrchr(path, '.');
+	auto* ext = strrchr(path, '.');
 	if (!ext)
 		return 0;
 	ext++;
@@ -233,11 +239,11 @@ static int isromext(char* path)
 
 static int scan_rom_2(struct zfile* f, void* dummy)
 {
-	const auto path = zfile_getname(f);
+	auto* const path = zfile_getname(f);
 
 	if (!isromext(path))
 		return 0;
-	const auto rd = scan_single_rom_2(f);
+	auto* const rd = scan_single_rom_2(f);
 	if (rd)
 		addrom(rd, path);
 	return 0;
@@ -252,6 +258,10 @@ static void scan_rom(char *path)
 	zfile_zopen(path, scan_rom_2, 0);
 }
 
+void SymlinkROMs()
+{
+	symlink_roms(&changed_prefs);
+}
 
 void RescanROMs()
 {
@@ -261,10 +271,10 @@ void RescanROMs()
 	romlist_clear();
 
 	ClearAvailableROMList();
-	fetch_rompath(path, MAX_DPATH);
+	get_rom_path(path, MAX_DPATH);
 
 	load_keyring(&changed_prefs, path);
-	ReadDirectory(path, nullptr, &files);
+	read_directory(path, nullptr, &files);
 	for (auto & file : files)
 	{
 		char tmppath[MAX_DPATH];
@@ -275,7 +285,7 @@ void RescanROMs()
 
 	auto id = 1;
 	for (;;) {
-		auto rd = getromdatabyid(id);
+		auto* rd = getromdatabyid(id);
 		if (!rd)
 			break;
 		if (rd->crc32 == 0xffffffff && strncmp(rd->model, "AROS", 4) == 0)
@@ -291,12 +301,11 @@ static void ClearConfigFileList()
 {
 	while (!ConfigFilesList.empty())
 	{
-		const auto tmp = ConfigFilesList[0];
+		auto* const tmp = ConfigFilesList[0];
 		ConfigFilesList.erase(ConfigFilesList.begin());
 		delete tmp;
 	}
 }
-
 
 void ReadConfigFileList(void)
 {
@@ -308,34 +317,40 @@ void ReadConfigFileList(void)
 	ClearConfigFileList();
 
 	// Read rp9 files
-	fetch_rp9path(path, MAX_DPATH);
-	ReadDirectory(path, nullptr, &files);
+	get_rp9_path(path, MAX_DPATH);
+	read_directory(path, nullptr, &files);
 	FilterFiles(&files, filter_rp9);
 	for (auto & file : files)
 	{
-		auto tmp = new ConfigFileInfo();
+		auto* tmp = new ConfigFileInfo();
 		strncpy(tmp->FullPath, path, MAX_DPATH - 1);
 		strncat(tmp->FullPath, file.c_str(), MAX_DPATH - 1);
 		strncpy(tmp->Name, file.c_str(), MAX_DPATH - 1);
-		removeFileExtension(tmp->Name);
+		remove_file_extension(tmp->Name);
 		strncpy(tmp->Description, _T("rp9"), MAX_DPATH - 1);
 		ConfigFilesList.emplace_back(tmp);
 	}
 
 	// Read standard config files
-	fetch_configurationpath(path, MAX_DPATH);
-	ReadDirectory(path, nullptr, &files);
+	get_configuration_path(path, MAX_DPATH);
+	read_directory(path, nullptr, &files);
 	FilterFiles(&files, filter_uae);
 	for (auto & file : files)
 	{
-		auto tmp = new ConfigFileInfo();
+		auto* tmp = new ConfigFileInfo();
 		strncpy(tmp->FullPath, path, MAX_DPATH - 1);
 		strncat(tmp->FullPath, file.c_str(), MAX_DPATH - 1);
 		strncpy(tmp->Name, file.c_str(), MAX_DPATH - 1);
-		removeFileExtension(tmp->Name);
+		remove_file_extension(tmp->Name);
 		// If the user has many (thousands) of configs, this will take a long time
-		if (read_config_descriptions)
-			cfgfile_get_description(tmp->FullPath, tmp->Description);
+		if (amiberry_options.read_config_descriptions)
+		{
+			auto p = cfgfile_open(tmp->FullPath, NULL);
+			if (p) {
+				cfgfile_get_description(p, NULL, tmp->Description, NULL, NULL, NULL, NULL, NULL);
+				cfgfile_close(p);
+			}
+		}
 		ConfigFilesList.emplace_back(tmp);
 	}
 }
@@ -350,6 +365,10 @@ ConfigFileInfo* SearchConfigInList(const char* name)
 	return nullptr;
 }
 
+static void clearallkeys (void)
+{
+	inputdevice_updateconfig (NULL, &changed_prefs);
+}
 
 static void prefs_to_gui()
 {
@@ -357,7 +376,6 @@ static void prefs_to_gui()
 	changed_prefs.mountitems = currprefs.mountitems;
 	memcpy(&changed_prefs.mountconfig, &currprefs.mountconfig, MOUNT_CONFIG_SIZE * sizeof(struct uaedev_config_info));
 }
-
 
 static void gui_to_prefs(void)
 {
@@ -367,28 +385,11 @@ static void gui_to_prefs(void)
 	fixup_prefs(&changed_prefs, true);
 }
 
-
 static void after_leave_gui()
 {
-	// Check if we have to set or clear autofire
-	const auto new_af = changed_prefs.input_autofire_linecnt == 0 ? 0 : 1;
-	auto update = 0;
-
-	for (auto num = 0; num < 2; ++num)
-	{
-		if (changed_prefs.jports[num].id < JSEM_MICE && changed_prefs.jports[num].autofire != new_af)
-		{
-			changed_prefs.jports[num].autofire = new_af;
-			update = 1;
-		}
-	}
-	if (update)
-		inputdevice_updateconfig(nullptr, &changed_prefs);
-
 	inputdevice_copyconfig(&changed_prefs, &currprefs);
 	inputdevice_config_change_test();
 }
-
 
 int gui_init()
 {
@@ -406,7 +407,7 @@ int gui_init()
 	if (quit_program == UAE_QUIT)
 		ret = -2; // Quit without start of emulator
 
-	update_display(&changed_prefs);
+	inputdevice_acquire (TRUE);
 
 	after_leave_gui();
 	emulating = 1;
@@ -422,41 +423,27 @@ void gui_exit()
 	ClearAvailableROMList();
 }
 
-
 void gui_purge_events()
 {
-#ifdef USE_SDL1
-	auto counter = 0;
-
-	SDL_Event event;
-	SDL_Delay(150);
-	// Strangely PS3 controller always send events, so we need a maximum number of event to purge.
-	while (SDL_PollEvent(&event) && counter < 50)
-	{
-		counter++;
-		SDL_Delay(10);
-	}
-#endif
 	keybuf_init();
 }
-
 
 int gui_update()
 {
 	char tmp[MAX_DPATH];
 
-	fetch_savestatepath(savestate_fname, MAX_DPATH);
-	fetch_screenshotpath(screenshot_filename, MAX_DPATH);
+	get_savestate_path(savestate_fname, MAX_DPATH - 1);
+	get_screenshot_path(screenshot_filename, MAX_DPATH - 1);
 
 	if (strlen(currprefs.floppyslots[0].df) > 0)
-		extractFileName(currprefs.floppyslots[0].df, tmp);
+		extract_filename(currprefs.floppyslots[0].df, tmp);
 	else
 		strncpy(tmp, last_loaded_config, MAX_DPATH - 1);
 
 	strncat(savestate_fname, tmp, MAX_DPATH - 1);
 	strncat(screenshot_filename, tmp, MAX_DPATH - 1);
-	removeFileExtension(savestate_fname);
-	removeFileExtension(screenshot_filename);
+	remove_file_extension(savestate_fname);
+	remove_file_extension(screenshot_filename);
 
   switch(currentStateNum)
   {
@@ -472,6 +459,30 @@ int gui_update()
   		strncat(savestate_fname,"-3.uss", MAX_DPATH - 1);
   		strncat(screenshot_filename,"-3.png", MAX_DPATH - 1);
   		break;
+	case 4:
+		strncat(savestate_fname, "-4.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-4.png", MAX_DPATH - 1);
+		break;
+	case 5:
+		strncat(savestate_fname, "-5.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-5.png", MAX_DPATH - 1);
+		break;
+	case 6:
+		strncat(savestate_fname, "-6.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-6.png", MAX_DPATH - 1);
+		break;
+	case 7:
+		strncat(savestate_fname, "-7.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-7.png", MAX_DPATH - 1);
+		break;
+	case 8:
+		strncat(savestate_fname, "-8.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-8.png", MAX_DPATH - 1);
+		break;
+	case 9:
+		strncat(savestate_fname, "-9.uss", MAX_DPATH - 1);
+		strncat(screenshot_filename, "-9.png", MAX_DPATH - 1);
+		break;
     default: 
 	   	strncat(savestate_fname,".uss", MAX_DPATH - 1);
   		strncat(screenshot_filename,".png", MAX_DPATH - 1);
@@ -479,11 +490,11 @@ int gui_update()
   return 0;
 }
 
-
 void gui_display(int shortcut)
 {
 	if (quit_program != 0)
 		return;
+	gui_active++;
 	emulating = 1;
 	pause_emulation = 1;
 	pause_sound();
@@ -498,33 +509,24 @@ void gui_display(int shortcut)
 	run_gui();
 	gui_to_prefs();
 
-	if (quit_program)
-		screen_is_picasso = 0;
-
 	black_screen_now();
 
-	update_display(&changed_prefs);
-
-	reset_sound();
-	resume_sound();
-	blkdev_exitgui();
-
-	after_leave_gui();
-
-	gui_update();
-
+	gui_update ();
 	gui_purge_events();
+	update_display(&changed_prefs);
+	
+	reset_sound();
+	after_leave_gui();
+	clearallkeys ();
+	blkdev_exitgui();
+	resume_sound();
+
+	inputdevice_acquire (TRUE);
+	setmouseactive(1);
+	
 	fpscounter_reset();
 	pause_emulation = 0;
-}
-
-void moveVertical(int value)
-{
-	changed_prefs.vertical_offset += value;
-	if (changed_prefs.vertical_offset < -16 + OFFSET_Y_ADJUST)
-		changed_prefs.vertical_offset = -16 + OFFSET_Y_ADJUST;
-	else if (changed_prefs.vertical_offset > 16 + OFFSET_Y_ADJUST)
-		changed_prefs.vertical_offset = 16 + OFFSET_Y_ADJUST;
+	gui_active--;
 }
 
 static void gui_flicker_led2(int led, int unitnum, int status)
@@ -605,7 +607,7 @@ void gui_fps(int fps, int idle, int color)
 	gui_led(LED_SND, (gui_data.sndbuf_status > 1 || gui_data.sndbuf_status < 0) ? 0 : 1, -1);
 }
 
-void gui_led(int led, int on)
+void gui_led(int led, int on, int brightness)
 {
 	unsigned char kbd_led_status;
 
@@ -757,8 +759,8 @@ bool DevicenameExists(const char* name)
 {
 	for (auto i = 0; i < MAX_HD_DEVICES; ++i)
 	{
-		auto uci = &changed_prefs.mountconfig[i];
-		const auto ci = &uci->ci;
+		auto* uci = &changed_prefs.mountconfig[i];
+		auto* const ci = &uci->ci;
 
 		if (ci->devname[0])
 		{
@@ -801,7 +803,7 @@ int tweakbootpri(int bp, int ab, int dnm)
 bool hardfile_testrdb(const TCHAR* filename)
 {
 	auto isrdb = false;
-	auto f = zfile_fopen(filename, _T("rb"), ZFD_NORMAL);
+	auto* f = zfile_fopen(filename, _T("rb"), ZFD_NORMAL);
 	uae_u8 tmp[8];
 
 	if (!f)
@@ -820,4 +822,9 @@ bool hardfile_testrdb(const TCHAR* filename)
 	}
 	zfile_fclose(f);
 	return isrdb;
+}
+
+bool isguiactive(void)
+{
+	return gui_active > 0;
 }
